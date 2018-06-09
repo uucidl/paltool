@@ -1,0 +1,9 @@
+struct FilePathList
+{
+  dummy : int;
+}
+
+func find_all_files_recursively(root : uint8 const*) : FilePathList
+{
+	return platform_find_all_files_recursively(root);
+}

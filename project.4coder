@@ -1,0 +1,13 @@
+version(1);
+project_name =  "Alps2018";
+patterns = { 
+ "*.ion", 
+ "*.sh",
+ "*.4coder",
+};
+
+load_paths = {
+  { .paths = { { "." }, }, .os = "win" },
+  { .paths = { { "." } }, .os = "mac" }, 
+};
+
