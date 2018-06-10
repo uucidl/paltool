@@ -1,2 +1,30 @@
 // implement find_all_files_recursively
 
+@foreign("attrgroup_t")
+typedef Attrgroup = uint32;
+
+@foreign("struct attrlist")
+struct AttrList
+{
+	bitmapcount : uint16;
+	reserved : uint16;
+	commonattr : Attrgroup;
+	volattr : Attrgroup;
+	dirattr : Attrgroup;
+	fileattr : Attrgroup;
+	forkattr : Attrgroup;
+}
+
+@foreign("ATTR_BIT_MAP_COUNT")
+const ATTR_BIT_MAP_COUNT = 5;
+
+func make_attrlist() : AttrList
+{
+	return { bitmapcount = ATTR_BIT_MAP_COUNT };
+}
+
+func platform_find_all_files_recursively(root : uint8 const*) : FilePathList
+{
+  #assert(false); // unimplemented yet
+  return {};
+}

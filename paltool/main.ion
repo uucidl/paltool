@@ -1,6 +1,63 @@
-import filesystem
+var USAGE = "<paltool> <root-directory>";
 
-func main() : int {
-	return 42;
+import filesystem { ... }
+import libc { ... }
+
+func die_at(argi: int, argc:int, argv: char**, error: char*) {
+  printf("ERROR: %s:\n", error);
+  {
+    printf("ERROR: ");
+    pre := "";
+    for (i:=0; i<argc; i++) {
+      printf("%s%s", pre, argv[i]);
+      pre = " ";
+    }
+    printf("\n");
+  }
+  printf("ERROR: ");
+ pre := "";
+ for (i:=0; i<argi; i++) {
+   printf("%s%*s", pre, (:int)strlen(argv[i]), "");
+   pre = " ";
+ }
+ if (argi < argc)
+ {
+   printf("%s", pre);
+   for (i:=0; i<strlen(argv[argi]); i++) {
+     printf("^");
+   }
+   pre = " ";
+ }
+ else
+ {
+   printf("%s%s", pre, "^");
+ }
+ pre = " ";
+ for (i:=argi+1; i<argc; i++) {
+   printf("%s%*s", pre, (:int)strlen(argv[i]), "");
+   pre = " ";
+ }
+ printf("\n");
+ printf("USAGE: %s\n", USAGE);
+ exit(1);
+}
+
+func expect_arg(argi: int, argc: int, argv: char**, error : char*) {
+  if (argi >= argc) {
+    die_at(argi, argc, argv, error);
+  }
+}
+
+func expect_str(argi: int*, argc: int, argv: char**, dest_path : char**) {
+  expect_arg(*argi, argc, argv, "expected string");
+}
+
+func main(argc: int, argv: char**) : int {
+  path : char*;
+  argi := 1;
+  expect_str(&argi, argc, argv, &path);
+  die_at(argi, argc, argv, "unimplemented yet");
+  files := find_all_files_recursively((:uint8*)path);
+  return 42;
 }
 
