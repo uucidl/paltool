@@ -8,20 +8,36 @@ struct PlatformPathListGenerator
 
 struct QueryResult
 {
-  size : uint32;
-  attributes : AttributeSet;
-  error : uint32;
-  nameinfo : Attrreference;
-  objtype : FSObjType;
-  objtag : FSObjTag;
+  size       : uint32;       // [0..4)
+  attributes : AttributeSet; // [4..24)
+  error : uint32;            // [24..28)
+  nameinfo : Attrreference;  // [28..36)
+  objtype : FSObjType;       // [36..40)
+  objtag : FSObjTag;         // [40..44)
   union {
     struct {
-      file_totalsize : Off;
-      file_ioblocksize : uint32;
+      file_totalsize : Off;      // [44..52)
+      file_ioblocksize : uint32; // [52..56)
     }
   }
+  name       : char*;        // derived
 }
 
+func unpack_query_result(bytes : uint8 const*, num_bytes : usize) : QueryResult {
+  nameinfo := *((:Attrreference*)&bytes[28]);
+  return {
+    size = *((:uint32*)&bytes[0]),
+    attributes = *((:AttributeSet*)&bytes[4]),
+    error = *((:uint32*)&bytes[24]),
+    nameinfo = *((:Attrreference*)&bytes[28]),
+    objtype = *((:FSObjType*)&bytes[36]),
+    objtag = *((:FSObjType*)&bytes[40]),
+    file_totalsize = *((:Off*)&bytes[44]),
+    file_ioblocksize = *((:uint32*)&bytes[52]),
+    name = (:char*)&bytes[28 + nameinfo.attr_dataoffset],
+  };
+}
+  
 func make_attrlist_for_QueryResult() : AttrList
 {
   return make_attrlist({
@@ -56,13 +72,27 @@ func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerato
     };
   }
   
-  
+  // TODO(nil): bug, bad layout for QueryResult results in weird sizes..
   #assert(num_entries_or_error >= 0);
   num_entries := num_entries_or_error;
-  entries := (:QueryResult*)&batch_mem[0];
+  batch_offset := 0;
+  next_entry := (:uint8*)&batch_mem[0];
+  printf("entries = {\n");  
   for (entries_idx := 0; entries_idx < num_entries; entries_idx++) {
-    printf("entries[%d].size = %d\n", entries_idx, entries.size);
+    remaining_num_bytes := (:uint8*)&batch_mem[sizeof(batch_mem)] - next_entry;
+    entry := unpack_query_result(next_entry, remaining_num_bytes);
+    printf("  [%d] = {\n", entries_idx);
+    printf("    type = %d,\n", entry.objtype);
+    printf("    name = %s,\n", entry.name);
+    printf("    error = %d,\n", entry.error);
+    if (entry.objtype == VREG) {
+      printf("    totalsize = %lld,\n", entry.file_totalsize);
+      printf("    ioblocksize = %u,\n", entry.file_ioblocksize);
+    }
+    printf("  },\n");
+    next_entry += entry.size;
   }
+  printf("}\n");
   #assert(false); // unimplemented yet
   close(root_fd);
   return {};

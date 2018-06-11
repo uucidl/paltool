@@ -16,10 +16,34 @@ const ERANGE = int(34);
 
 #foreign(header="<sys/attr.h>")
 #foreign(header="<sys/types.h>")
+#foreign(header="<sys/vnode.h>")
 #foreign(header="<unistd.h>")
 
 @foreign("off_t")
 typedef Off = int64;
+
+@foreign("VNON")
+const VNON = int(0);
+@foreign("VREG")
+const VREG = int(1);
+@foreign("VDIR")
+const VDIR = int(2);
+@foreign("VBLK")
+const VBLK = int(3);
+@foreign("VCHR")
+const VCHR = int(4);
+@foreign("VLNK")
+const VLNK = int(5);
+@foreign("VSOCK")
+const VSOCK = int(6);
+@foreign("VFIFO")
+const VFIFO = int(7);
+@foreign("VBAD")
+const VBAD = int(8);
+@foreign("VSTR")
+const VSTR = int(9);
+@foreign("VCPLX")
+const VCPLX = int(10);
 
 @foreign("ATTR_CMN_RETURNED_ATTRS")
 const ATTR_CMN_RETURNED_ATTRS = uint32(0x8000_0000);
