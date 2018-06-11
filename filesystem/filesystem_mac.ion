@@ -1,30 +1,79 @@
-// implement find_all_files_recursively
+import .bsd { ... }
+import libc { printf }
 
-@foreign("attrgroup_t")
-typedef Attrgroup = uint32;
-
-@foreign("struct attrlist")
-struct AttrList
+struct PlatformPathListGenerator
 {
-	bitmapcount : uint16;
-	reserved : uint16;
-	commonattr : Attrgroup;
-	volattr : Attrgroup;
-	dirattr : Attrgroup;
-	fileattr : Attrgroup;
-	forkattr : Attrgroup;
+  dummy : int;
 }
 
-@foreign("ATTR_BIT_MAP_COUNT")
-const ATTR_BIT_MAP_COUNT = 5;
-
-func make_attrlist() : AttrList
+struct QueryResult
 {
-	return { bitmapcount = ATTR_BIT_MAP_COUNT };
+  size : uint32;
+  attributes : AttributeSet;
+  error : uint32;
+  nameinfo : Attrreference;
+  objtype : FSObjType;
+  objtag : FSObjTag;
+  union {
+    struct {
+      file_totalsize : Off;
+      file_ioblocksize : uint32;
+    }
+  }
 }
 
-func platform_find_all_files_recursively(root : uint8 const*) : FilePathList
+func make_attrlist_for_QueryResult() : AttrList
+{
+  return make_attrlist({
+      commonattr = ATTR_CMN_RETURNED_ATTRS | ATTR_CMN_ERROR | ATTR_CMN_NAME | ATTR_CMN_OBJTYPE | ATTR_CMN_OBJTAG,
+      fileattr = ATTR_FILE_TOTALSIZE | ATTR_FILE_IOBLOCKSIZE,
+  });
+}
+
+func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerator
+{
+  root_path := (:char const*)root;
+  fd_or_error := open(root_path, O_RDONLY, 0);
+  if (fd_or_error < 0) {
+    return { error = PathListError_InvalidRoot };
+  }
+  #assert(fd_or_error >= 0);
+  root_fd := fd_or_error;
+  query := make_attrlist_for_QueryResult();
+  options := uint64(FSOPT_NOFOLLOW | FSOPT_REPORT_FULLSIZE | FSOPT_PACK_INVAL_ATTRS);
+  batch_mem : uint32[16*256];
+  num_entries_or_error := getattrlistbulk(root_fd, &query, &batch_mem[0], sizeof(batch_mem), options);
+  if (num_entries_or_error < 0)
+  {
+    #assert(errno != EFAULT);
+    #assert(errno != ERANGE);
+    #assert(errno != EINVAL);
+    close(root_fd);
+    return {
+      error = (errno == EBADF || errno == ENOTDIR)
+	? PathListError_InvalidRoot
+        : PathListError_FileSystemError
+    };
+  }
+  
+  
+  #assert(num_entries_or_error >= 0);
+  num_entries := num_entries_or_error;
+  entries := (:QueryResult*)&batch_mem[0];
+  for (entries_idx := 0; entries_idx < num_entries; entries_idx++) {
+    printf("entries[%d].size = %d\n", entries_idx, entries.size);
+  }
+  #assert(false); // unimplemented yet
+  close(root_fd);
+  return {};
+}
+
+func platform_next_paths(generator : PathListGenerator*)
+{
+  #assert(false); // uimplemented yet
+}
+
+func platform_free_generator(generator : PlatformPathListGenerator*)
 {
   #assert(false); // unimplemented yet
-  return {};
 }

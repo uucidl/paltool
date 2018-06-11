@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -e
+
+CFLAGS="-fdiagnostics-absolute-paths -g"
+
 HERE="$(dirname "${0}")"
 pushd "${HERE}"
 ion paltool
-cc out_paltool.c -o paltool.elf
 popd
+
+O="${HERE}/paltool.elf"
+cc "${HERE}"/out_paltool.c -o "${O}" $CFLAGS && printf "PROGRAM\t%s\n" "${O}"
 

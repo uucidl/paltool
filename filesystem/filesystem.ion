@@ -1,9 +1,41 @@
-struct FilePathList
+enum PathListError
 {
-  dummy : int;
+  PathListError_None,
+  PathListError_PastTheEnd,
+  PathListError_InvalidRoot,
+  PathListError_OutOfMemory,
+  PathListError_FileSystemError,
+}
+  
+struct PathList
+{
+  root : uint8*;
+  num_filepaths : usize;
+  filepaths : uint8**;
+  num_dirpaths : usize;
+  dirpaths : uint8**;
+  num_used_bytes : usize;
 }
 
-func find_all_files_recursively(root : uint8 const*) : FilePathList
+struct PathListGenerator
 {
-	return platform_find_all_files_recursively(root);
+  error : PathListError;
+  output : PathList;
+  resources : PlatformPathListGenerator*;
+}
+  
+func find_all_files_recursively(root : uint8 const*) : PathListGenerator
+{
+  return platform_find_all_files_recursively(root);
+}
+
+func next_paths(generator : PathListGenerator*)
+{
+  platform_next_paths(generator);
+}
+
+func free_generator(generator : PathListGenerator*)
+{
+  platform_free_generator(generator.resources);
+  generator = {};
 }
