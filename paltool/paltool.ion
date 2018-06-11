@@ -20,7 +20,7 @@ func main(argc: int, argv: char**) : int {
     printf("ERROR: %d\n", paths.error);
   }
   free_generator(&paths);
-  return 42;
+  return 0;
 }
 
 func expect_arg(argi: int, argc: int, argv: char**, error : char*) {

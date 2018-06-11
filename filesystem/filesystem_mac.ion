@@ -1,23 +1,23 @@
 import .bsd { ... }
-import libc { printf }
+import libc { calloc, free, printf }
 
 struct PlatformPathListGenerator
 {
-  dummy : int;
+  fd : int;
 }
 
 struct QueryResult
 {
-  size       : uint32;       // [0..4)
-  attributes : AttributeSet; // [4..24)
-  error : uint32;            // [24..28)
-  nameinfo : Attrreference;  // [28..36)
-  objtype : FSObjType;       // [36..40)
-  objtag : FSObjTag;         // [40..44)
+  size       : uint32;
+  attributes : AttributeSet;
+  error : uint32;
+  nameinfo : Attrreference;
+  objtype : FSObjType;
+  objtag : FSObjTag;
   union {
     struct {
-      file_totalsize : Off;      // [44..52)
-      file_ioblocksize : uint32; // [52..56)
+      file_totalsize : Off;
+      file_ioblocksize : uint32;
     }
   }
   name       : char*;        // derived
@@ -46,6 +46,13 @@ func make_attrlist_for_QueryResult() : AttrList
   });
 }
 
+func make_macos_path_list_generator(root_fd : int) : PlatformPathListGenerator
+{
+  return {
+    fd = root_fd,
+  };
+}
+
 func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerator
 {
   root_path := (:char const*)root;
@@ -55,26 +62,37 @@ func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerato
   }
   #assert(fd_or_error >= 0);
   root_fd := fd_or_error;
+  resources : PlatformPathListGenerator* = calloc(1, sizeof(PlatformPathListGenerator));
+  *resources = make_macos_path_list_generator(root_fd);
+  return {
+    resources = resources,
+  };
+}
+
+func platform_next_paths(generator : PathListGenerator*)
+{
+  root_fd := generator.resources.fd;
   query := make_attrlist_for_QueryResult();
   options := uint64(FSOPT_NOFOLLOW | FSOPT_REPORT_FULLSIZE | FSOPT_PACK_INVAL_ATTRS);
   batch_mem : uint32[16*256];
   num_entries_or_error := getattrlistbulk(root_fd, &query, &batch_mem[0], sizeof(batch_mem), options);
-  if (num_entries_or_error < 0)
-  {
+  if (num_entries_or_error < 0) {
     #assert(errno != EFAULT);
     #assert(errno != ERANGE);
     #assert(errno != EINVAL);
-    close(root_fd);
-    return {
-      error = (errno == EBADF || errno == ENOTDIR)
+    generator.error = (errno == EBADF || errno == ENOTDIR)
 	? PathListError_InvalidRoot
-        : PathListError_FileSystemError
-    };
+        : PathListError_FileSystemError;
+    return;
   }
-  
-  // TODO(nil): bug, bad layout for QueryResult results in weird sizes..
+
   #assert(num_entries_or_error >= 0);
   num_entries := num_entries_or_error;
+  if (num_entries == 0) {
+    generator.error = PathListError_PastTheEnd;
+    return;
+  }
+  
   batch_offset := 0;
   next_entry := (:uint8*)&batch_mem[0];
   printf("entries = {\n");  
@@ -93,17 +111,10 @@ func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerato
     next_entry += entry.size;
   }
   printf("}\n");
-  #assert(false); // unimplemented yet
-  close(root_fd);
-  return {};
-}
-
-func platform_next_paths(generator : PathListGenerator*)
-{
-  #assert(false); // uimplemented yet
 }
 
 func platform_free_generator(generator : PlatformPathListGenerator*)
 {
-  #assert(false); // unimplemented yet
+  close(generator.fd);
+  free(generator);
 }
