@@ -7,6 +7,7 @@ var registry : Tasks;
 
 struct TaskContent
 {
+  num_tasks_waited_on : int;
   started : bool;
   data : void*;
   fn : TaskFunc;
@@ -95,6 +96,14 @@ func platform_task_depends_on(task : Task, dependency : Task) {
   #assert(false);
 }
 
+func get_content(task : Task) : TaskContent* {
+    // @todo: thread safety with submission
+  idx := bits(task.id, 0, 60);
+  #assert(idx < registry.len); // invalid handle
+  #assert(registry.keys[idx] == task.id); // invalid handle
+  return &registry.values[idx];
+}
+
 func run_task_task(opaque_data : void*) {
   data : TaskContent* = opaque_data;
   data.fn(data.data);
@@ -103,12 +112,10 @@ func run_task_task(opaque_data : void*) {
 
 // Schedule a task to run as soon as possible
 func platform_start_task(task : Task) {
-  idx := bits(task.id, 0, 60);
-  #assert(idx < registry.len); // invalid handle
-  #assert(registry.keys[idx] == task.id); // invalid handle
-  #assert(registry.values[idx].fn); // task has already run
-  registry.values[idx].started = true;
-  async(main_queue, &registry.values[idx], run_task_task);
+  // @todo: thread safety with submission
+  content := get_content(task);
+  content.started = true;
+  async(main_queue, content, run_task_task);
 }
 
 func puts_task(data : void*) {

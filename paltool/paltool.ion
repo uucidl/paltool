@@ -3,8 +3,10 @@ var USAGE = "<paltool> <root-directory>";
 import filesystem { ... }
 import libc { ... }
 import tasks { ... }
+import codecs { ... }
 
 func main(argc: int, argv: char**) : int {
+  tasks_init();
   path : char*;
   argi := 1;
   expect_str(&argi, argc, argv, &path);
@@ -15,7 +17,12 @@ func main(argc: int, argv: char**) : int {
       printf("[d]\t%s\n", paths.output.dirpaths[i]);
     }
     for (i := 0; i < paths.output.num_filepaths; i++) {
-      printf("[f]\t%s\n", paths.output.filepaths[i]);
+      file := paths.output.filepaths[i];
+      printf("[f]\t%s", file);
+      if (str_match_suffix((:char*)file, ".jpg") || str_match_suffix((:char*)file, ".JPG")) {
+	printf("\t[image/jpeg]");
+      }
+      printf("\n");
     }
     next_paths(&paths);
   }
@@ -23,7 +30,18 @@ func main(argc: int, argv: char**) : int {
     printf("ERROR: %d\n", paths.error);
   }
   free_generator(&paths);
+  tasks_deinit();
   return 0;
+}
+
+func str_match_suffix(str : char const*, suffix : char const*) : bool {
+  n := strlen(str);
+  mn := strlen(suffix);
+  while(n && mn && str[n - 1] == suffix[mn - 1]) {
+    mn--;
+    n--;
+  }
+  return mn == 0; 
 }
 
 func expect_arg(argi: int, argc: int, argv: char**, error : char*) {
