@@ -72,6 +72,7 @@ func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerato
 
 func platform_next_paths(generator : PathListGenerator*)
 {
+  #assert(generator.error == PathListError_None);
   root_fd := generator.resources.fd;
   query := make_attrlist_for_QueryResult();
   options := uint64(FSOPT_NOFOLLOW | FSOPT_REPORT_FULLSIZE | FSOPT_PACK_INVAL_ATTRS);
@@ -91,6 +92,13 @@ func platform_next_paths(generator : PathListGenerator*)
   if (num_entries == 0) {
     generator.error = PathListError_PastTheEnd;
     return;
+  }
+
+  if (generator.output.filepaths) {
+    buf_hdr(generator.output.filepaths).size = 0;
+  }
+  if (generator.output.dirpaths) {
+    buf_hdr(generator.output.dirpaths).size = 0;
   }
   
   batch_offset := 0;
@@ -127,9 +135,12 @@ func platform_free_generator(generator : PathListGenerator*)
 {
   buf_free(generator.output.filepaths);
   buf_free(generator.output.dirpaths);
-  close(generator.resources.fd);
-  free(generator.resources);
-  generator.resources = NULL;
+  if (generator.resources)
+  {
+    close(generator.resources.fd);
+    free(generator.resources);
+    generator.resources = NULL;
+  }
 }
 
 
@@ -140,34 +151,37 @@ func debug_printf(fmt : char const*, ...) {
 struct BufHeader
 {
   capacity : int32;
-  len      : int32;
+  size     : int32;
   magic    : int32;
   bytes    : uint8[1];
 }
 
 const BufHeaderMagic = 0x6731;
 
-func buf_header(bufptr : void*) : BufHeader*
+func buf_hdr(bufptr : void*) : BufHeader*
 {
   addr := ((:uint8*) bufptr) - offsetof(BufHeader, bytes);
   hdr := (:BufHeader*) addr;
   #assert(hdr.magic == BufHeaderMagic);
+  #assert(hdr.capacity >= 0);
+  #assert(hdr.size >= 0);
   return hdr;  
 }
 
 func buf_free(bufptr : void*)
 {
-  if (bufptr)
-  {
-    hdr := buf_header(bufptr);
-    hdr.magic = 0x0000;
-    free(hdr);
+  if (!bufptr) {
+    return;
   }
+
+  hdr := buf_hdr(bufptr);
+  hdr.magic = 0x0000;
+  free(hdr);
 }
 
 func buf_fit(bufptr : void*, added_size : usize) : void*
 {
-  hdr := bufptr? buf_header(bufptr) : NULL;
+  hdr := bufptr? buf_hdr(bufptr) : NULL;
   if (!hdr)
   {  
 	hdr = calloc(1, sizeof(BufHeader) + added_size);
@@ -177,32 +191,36 @@ func buf_fit(bufptr : void*, added_size : usize) : void*
 	};
 	return &hdr.bytes[0];
   }
-  size := added_size + hdr.capacity;
+  size := added_size + hdr.size;
   #assert(size < INT32_MAX);
   #assert(hdr.magic == BufHeaderMagic);
-  old_capacity := hdr.capacity;
-  next_capacity := hdr.capacity + hdr.capacity + 1;
   need_capacity := size;
-  new_capacity := need_capacity>next_capacity? need_capacity:next_capacity;
-  hdr = realloc(hdr, sizeof(BufHeader) + new_capacity);
-  memset(&hdr.bytes[old_capacity], 0, new_capacity - old_capacity);
-  hdr.capacity = new_capacity;
+  if (need_capacity > hdr.capacity)
+  {
+    old_capacity := hdr.capacity;
+    next_capacity := 2*old_capacity;
+    new_capacity := need_capacity>next_capacity? need_capacity:next_capacity;
+    hdr = realloc(hdr, sizeof(BufHeader) + new_capacity);
+    memset(&hdr.bytes[old_capacity], 0, new_capacity - old_capacity);
+    hdr.capacity = new_capacity;
+    #assert(hdr.capacity >= hdr.size && hdr.capacity <= 2*old_capacity);
+  }
   return &hdr.bytes[0];
 }
 
 func push(bufptr : void*, data : void*, data_size : usize)
 {
-  hdr := buf_header(bufptr);
+  hdr := buf_hdr(bufptr);
   #assert(hdr.magic == BufHeaderMagic);
   #assert(data_size < INT32_MAX - hdr.capacity);
-  #assert(data_size <= hdr.capacity - hdr.len);
-  memcpy(&hdr.bytes[hdr.len], data, data_size);
-  hdr.len += data_size;
+  #assert(data_size <= hdr.capacity - hdr.size);
+  memcpy(&hdr.bytes[hdr.size], data, data_size);
+  hdr.size += data_size;
 }
 
 func len(bufptr : void*, data_size : usize) : usize
 {
-  len := bufptr? buf_header(bufptr).len : 0;
-  #assert(len % data_size == 0);
-  return len/data_size;
+  size := bufptr? buf_hdr(bufptr).size : 0;
+  #assert(size % data_size == 0);
+  return size/data_size;
 }
