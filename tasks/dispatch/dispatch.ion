@@ -1,0 +1,59 @@
+// libdispatch
+
+#foreign(header="<dispatch/dispatch.h>")
+
+@foreign("DISPATCH_QUEUE_PRIORITY_DEFAULT")
+const QUEUE_PRIORITY_DEFAULT = 0;
+
+@foreign("DISPATCH_QUEUE_PRIORITY_LOW")
+const QUEUE_PRIORITY_LOW = -2;
+
+@foreign("DISPATCH_QUEUE_PRIORITY_HIGH")
+const QUEUE_PRIORITY_HIGH = 2;
+
+@foreign("DISPATCH_QUEUE_PRIORITY_BACKGROUND")
+const QUEUE_PRIORITY_BACKGROUND = INT16_MIN;
+
+
+@foreign("struct dispatch_queue_s")
+struct QueueObject;
+
+@foreign("struct dispatch_queue_attr_s")
+struct QueueAttrObject;
+
+@foreign("struct dispatch_object_s")
+struct ObjectObject;
+
+@foreign("dispatch_object_t")
+union Object
+{
+_do : ObjectObject*;
+_dq : QueueObject*;  
+}
+
+@foreign("dispatch_queue_t")
+typedef Queue = QueueObject*;
+
+@foreign("dispatch_queue_attr_t")
+typedef QueueAttr = QueueAttrObject*;
+
+@foreign("dispatch_queue_create")
+func queue_create(label : char const*, attr : QueueAttr) : Queue;
+
+@foreign("dispatch_get_global_queue")
+func get_global_queue(priority : long, flags : ulong) : Queue;
+
+@foreign("dispatch_set_target_queue")
+func set_target_queue(object : Object, target : Queue);
+
+@foreign("dispatch_retain")
+func retain(object : Object);
+
+@foreign("dispatch_release")
+func release(object : Object);
+
+@foreign("dispatch_async_f")
+func async(queue : Queue, context : void*, fn : func (context : void*));
+
+@foreign("dispatch_sync_f")
+func sync(queue : Queue, context : void*, fn : func (context : void*));

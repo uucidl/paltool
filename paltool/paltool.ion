@@ -2,6 +2,7 @@ var USAGE = "<paltool> <root-directory>";
 
 import filesystem { ... }
 import libc { ... }
+import tasks { ... }
 
 func main(argc: int, argv: char**) : int {
   path : char*;

@@ -1,0 +1,48 @@
+struct Task
+{
+  id : uint64;
+}
+
+typedef TaskFunc = func(data : void*);
+
+func tasks_init() {
+  platform_tasks_init();
+}
+
+func tasks_deinit() {
+  platform_tasks_deinit();
+}
+
+// Create a new task and returns its handle
+func create_task(fn : TaskFunc, data : void*) : Task {
+  return platform_create_task(fn, data);
+}
+
+// Mark a dependency between two tasks
+func task_depends_on(task : Task, dependency : Task) {
+  return platform_task_depends_on(task, dependency);
+}
+
+// Schedule a task to run as soon as possible
+func start_task(task : Task) {
+  return platform_start_task(task);
+}
+
+// Comment originally by Per Vognsen:
+//
+// Always assign task workloads that, on average, justify the overhead of
+// scheduling a task, however minimal that overhead may be.
+//
+// The other major benefit of working on bigger chunks of data is obviously
+// coherent memory access. The only benefit of finer-grained tasks is better
+// load balancing (and you don't need too much granularity for that) or when
+// finer grained tasks lead to finer grainer dependencies, letting work start
+// much sooner than otherwise. Even if your data has a natural granularity (a
+// million entities), you might not want to kick off a task for each. Batch them
+// up!
+//
+// This is the equivalent of parallel_foreach and similar things, but adapted
+// for the characteristics of your data.
+//
+// Don't try to make batching the job of the task system. The right strategy is
+// tied up with your data design.

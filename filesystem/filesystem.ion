@@ -14,7 +14,6 @@ struct PathList
   filepaths : uint8**;
   num_dirpaths : usize;
   dirpaths : uint8**;
-  num_used_bytes : usize;
 }
 
 struct PathListGenerator

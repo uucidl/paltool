@@ -96,27 +96,18 @@ func platform_next_paths(generator : PathListGenerator*)
 
   if (generator.output.filepaths) {
     buf_hdr(generator.output.filepaths).size = 0;
+    generator.output.num_filepaths = 0;
   }
   if (generator.output.dirpaths) {
     buf_hdr(generator.output.dirpaths).size = 0;
+    generator.output.num_dirpaths = 0;
   }
   
   batch_offset := 0;
   next_entry := (:uint8*)&generator.resources.batch_mem[0];
-  debug_printf("entries = {\n");  
   for (entries_idx := 0; entries_idx < num_entries; entries_idx++) {
     remaining_num_bytes := (:uint8*)&generator.resources.batch_mem[sizeof(generator.resources.batch_mem)] - next_entry;
     entry := unpack_query_result(next_entry, remaining_num_bytes);
-    debug_printf("  [%d] = {\n", entries_idx);
-    debug_printf("    type = %d,\n", entry.objtype);
-    debug_printf("    name = %s,\n", entry.name);
-    debug_printf("    error = %d,\n", entry.error);
-    if (entry.objtype == VREG) {
-      debug_printf("    totalsize = %lld,\n", entry.file_totalsize);
-      debug_printf("    ioblocksize = %u,\n", entry.file_ioblocksize);
-    }
-    debug_printf("  },\n");
-
     if (entry.objtype == VREG) {
        generator.output.filepaths = buf_fit(generator.output.filepaths, sizeof(entry.name));
        push(generator.output.filepaths, &entry.name, sizeof(entry.name));
@@ -126,7 +117,6 @@ func platform_next_paths(generator : PathListGenerator*)
     }
     next_entry += entry.size;
   }
-  debug_printf("}\n");
   generator.output.num_filepaths = len(generator.output.filepaths, sizeof(generator.output.filepaths[0]));
   generator.output.num_dirpaths = len(generator.output.dirpaths, sizeof(generator.output.filepaths[0]));
 }
@@ -143,10 +133,6 @@ func platform_free_generator(generator : PathListGenerator*)
   }
 }
 
-
-func debug_printf(fmt : char const*, ...) {
-     // do nothing
-}
 
 struct BufHeader
 {

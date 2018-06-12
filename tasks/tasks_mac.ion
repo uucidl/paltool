@@ -1,0 +1,121 @@
+import .dispatch {...}
+import libc { puts, realloc, memset, free }
+
+var submission_queue : Queue;
+var main_queue : Queue;
+var registry : Tasks;
+
+struct TaskContent
+{
+  started : bool;
+  data : void*;
+  fn : TaskFunc;
+}
+
+struct Tasks
+{
+  cap : usize;
+  len : usize;
+  keys : uint64*;
+  values : TaskContent*;
+}
+
+func platform_tasks_init() {
+  submission_queue = queue_create("tasks_submit", NULL);
+  #assert(submission_queue);
+  main_queue = queue_create("tasks_main", NULL);
+  set_target_queue({_dq=main_queue}, get_global_queue(QUEUE_PRIORITY_DEFAULT, 0));
+}
+
+func platform_tasks_deinit() {
+  #assert(submission_queue);
+  release({_dq=submission_queue});
+  release({_dq=main_queue});
+  submission_queue = NULL;
+  free(registry.keys);
+  free(registry.values);
+  registry = {};
+}
+
+struct NewTaskData
+{
+  data : void*;
+  fn : TaskFunc;
+  task : Task;
+}
+
+
+func _add_task_submission_task(opaque_data : void*) {
+  data : NewTaskData* = opaque_data;
+  generation : uint16 = 0;
+  idx : usize = -1;
+  for (i:=0; i<registry.len; i++) {
+    if (!registry.values[i].fn) {
+      idx = i;
+      generation = 1 + bits(registry.keys[i], 60, 4);
+    }
+  }
+  if (idx == -1) {
+    idx = registry.len;
+    if (registry.len + 1 > registry.cap) {
+      old_cap := registry.cap;
+      needed_cap := registry.len + 1;
+      next_cap := 2*old_cap;
+      new_cap := needed_cap>next_cap? needed_cap:next_cap;
+      #assert(registry.len <= new_cap);
+      registry.keys = realloc(registry.keys, new_cap*sizeof(registry.keys[0]));
+      memset(&registry.keys[registry.len], 0, (new_cap - old_cap)*sizeof(registry.keys[0]));
+      registry.values = realloc(registry.values, new_cap * sizeof(registry.values[0]));
+      memset(&registry.values[registry.len], 0, (new_cap - old_cap)*sizeof(registry.values[0]));
+      registry.cap = new_cap;
+    }
+    registry.len += 1;
+  }
+
+  #assert(idx < (UINT64_MAX<<4));
+  task := Task{ id = (uint64(generation)<<60) + idx };
+  registry.keys[idx] = task.id;
+  registry.values[idx] = { data=data.data, fn=data.fn };
+  data.task = task;
+}
+
+// Create a new task and returns its handle
+func platform_create_task(fn : TaskFunc, data : void*) : Task {
+  #assert(submission_queue); // you forgot to call tasks_init
+  submission_data := NewTaskData {
+    data = data,
+    fn = fn,
+  };
+  sync(submission_queue, &submission_data, _add_task_submission_task);
+  return submission_data.task;
+}
+
+// Mark a dependency between two tasks
+func platform_task_depends_on(task : Task, dependency : Task) {
+  #assert(false);
+}
+
+func run_task_task(opaque_data : void*) {
+  data : TaskContent* = opaque_data;
+  data.fn(data.data);
+  data.fn = NULL; // mark task has completed.
+}
+
+// Schedule a task to run as soon as possible
+func platform_start_task(task : Task) {
+  idx := bits(task.id, 0, 60);
+  #assert(idx < registry.len); // invalid handle
+  #assert(registry.keys[idx] == task.id); // invalid handle
+  #assert(registry.values[idx].fn); // task has already run
+  registry.values[idx].started = true;
+  async(main_queue, &registry.values[idx], run_task_task);
+}
+
+func puts_task(data : void*) {
+  puts((:char*)data);
+}
+
+func bits(x : uint64, start : int, len : int) : uint64 {
+  return (x<<start) & ((1<<len) - 1);
+}
+	      
