@@ -1,9 +1,10 @@
 import .bsd { ... }
-import libc { calloc, free, printf }
+import libc { calloc, free, memcpy, memset, printf, realloc }
 
 struct PlatformPathListGenerator
 {
   fd : int;
+  batch_mem : uint32[16*1024];
 }
 
 struct QueryResult
@@ -74,8 +75,7 @@ func platform_next_paths(generator : PathListGenerator*)
   root_fd := generator.resources.fd;
   query := make_attrlist_for_QueryResult();
   options := uint64(FSOPT_NOFOLLOW | FSOPT_REPORT_FULLSIZE | FSOPT_PACK_INVAL_ATTRS);
-  batch_mem : uint32[16*256];
-  num_entries_or_error := getattrlistbulk(root_fd, &query, &batch_mem[0], sizeof(batch_mem), options);
+  num_entries_or_error := getattrlistbulk(root_fd, &query, &generator.resources.batch_mem[0], sizeof(generator.resources.batch_mem), options);
   if (num_entries_or_error < 0) {
     #assert(errno != EFAULT);
     #assert(errno != ERANGE);
@@ -94,27 +94,115 @@ func platform_next_paths(generator : PathListGenerator*)
   }
   
   batch_offset := 0;
-  next_entry := (:uint8*)&batch_mem[0];
-  printf("entries = {\n");  
+  next_entry := (:uint8*)&generator.resources.batch_mem[0];
+  debug_printf("entries = {\n");  
   for (entries_idx := 0; entries_idx < num_entries; entries_idx++) {
-    remaining_num_bytes := (:uint8*)&batch_mem[sizeof(batch_mem)] - next_entry;
+    remaining_num_bytes := (:uint8*)&generator.resources.batch_mem[sizeof(generator.resources.batch_mem)] - next_entry;
     entry := unpack_query_result(next_entry, remaining_num_bytes);
-    printf("  [%d] = {\n", entries_idx);
-    printf("    type = %d,\n", entry.objtype);
-    printf("    name = %s,\n", entry.name);
-    printf("    error = %d,\n", entry.error);
+    debug_printf("  [%d] = {\n", entries_idx);
+    debug_printf("    type = %d,\n", entry.objtype);
+    debug_printf("    name = %s,\n", entry.name);
+    debug_printf("    error = %d,\n", entry.error);
     if (entry.objtype == VREG) {
-      printf("    totalsize = %lld,\n", entry.file_totalsize);
-      printf("    ioblocksize = %u,\n", entry.file_ioblocksize);
+      debug_printf("    totalsize = %lld,\n", entry.file_totalsize);
+      debug_printf("    ioblocksize = %u,\n", entry.file_ioblocksize);
     }
-    printf("  },\n");
+    debug_printf("  },\n");
+
+    if (entry.objtype == VREG) {
+       generator.output.filepaths = buf_fit(generator.output.filepaths, sizeof(entry.name));
+       push(generator.output.filepaths, &entry.name, sizeof(entry.name));
+    } else {
+       generator.output.dirpaths = buf_fit(generator.output.dirpaths, sizeof(entry.name));
+       push(generator.output.dirpaths, &entry.name, sizeof(entry.name));
+    }
     next_entry += entry.size;
   }
-  printf("}\n");
+  debug_printf("}\n");
+  generator.output.num_filepaths = len(generator.output.filepaths, sizeof(generator.output.filepaths[0]));
+  generator.output.num_dirpaths = len(generator.output.dirpaths, sizeof(generator.output.filepaths[0]));
 }
 
-func platform_free_generator(generator : PlatformPathListGenerator*)
+func platform_free_generator(generator : PathListGenerator*)
 {
-  close(generator.fd);
-  free(generator);
+  buf_free(generator.output.filepaths);
+  buf_free(generator.output.dirpaths);
+  close(generator.resources.fd);
+  free(generator.resources);
+  generator.resources = NULL;
+}
+
+
+func debug_printf(fmt : char const*, ...) {
+     // do nothing
+}
+
+struct BufHeader
+{
+  capacity : int32;
+  len      : int32;
+  magic    : int32;
+  bytes    : uint8[1];
+}
+
+const BufHeaderMagic = 0x6731;
+
+func buf_header(bufptr : void*) : BufHeader*
+{
+  addr := ((:uint8*) bufptr) - offsetof(BufHeader, bytes);
+  hdr := (:BufHeader*) addr;
+  #assert(hdr.magic == BufHeaderMagic);
+  return hdr;  
+}
+
+func buf_free(bufptr : void*)
+{
+  if (bufptr)
+  {
+    hdr := buf_header(bufptr);
+    hdr.magic = 0x0000;
+    free(hdr);
+  }
+}
+
+func buf_fit(bufptr : void*, added_size : usize) : void*
+{
+  hdr := bufptr? buf_header(bufptr) : NULL;
+  if (!hdr)
+  {  
+	hdr = calloc(1, sizeof(BufHeader) + added_size);
+	*hdr = {
+	     capacity = added_size,
+	     magic = BufHeaderMagic,
+	};
+	return &hdr.bytes[0];
+  }
+  size := added_size + hdr.capacity;
+  #assert(size < INT32_MAX);
+  #assert(hdr.magic == BufHeaderMagic);
+  old_capacity := hdr.capacity;
+  next_capacity := hdr.capacity + hdr.capacity + 1;
+  need_capacity := size;
+  new_capacity := need_capacity>next_capacity? need_capacity:next_capacity;
+  hdr = realloc(hdr, sizeof(BufHeader) + new_capacity);
+  memset(&hdr.bytes[old_capacity], 0, new_capacity - old_capacity);
+  hdr.capacity = new_capacity;
+  return &hdr.bytes[0];
+}
+
+func push(bufptr : void*, data : void*, data_size : usize)
+{
+  hdr := buf_header(bufptr);
+  #assert(hdr.magic == BufHeaderMagic);
+  #assert(data_size < INT32_MAX - hdr.capacity);
+  #assert(data_size <= hdr.capacity - hdr.len);
+  memcpy(&hdr.bytes[hdr.len], data, data_size);
+  hdr.len += data_size;
+}
+
+func len(bufptr : void*, data_size : usize) : usize
+{
+  len := bufptr? buf_header(bufptr).len : 0;
+  #assert(len % data_size == 0);
+  return len/data_size;
 }

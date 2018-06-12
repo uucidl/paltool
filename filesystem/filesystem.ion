@@ -36,6 +36,6 @@ func next_paths(generator : PathListGenerator*)
 
 func free_generator(generator : PathListGenerator*)
 {
-  platform_free_generator(generator.resources);
+  platform_free_generator(generator);
   generator = {};
 }

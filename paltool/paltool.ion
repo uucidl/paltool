@@ -10,13 +10,15 @@ func main(argc: int, argv: char**) : int {
   printf("INFO: listing all files from root: %s\n", path);
   paths := find_all_files_recursively((:uint8*)path);
   while (paths.error == PathListError_None) {
+    for (i := 0; i < paths.output.num_dirpaths; i++) {
+      printf("[d]\t%s\n", paths.output.dirpaths[i]);
+    }
     for (i := 0; i < paths.output.num_filepaths; i++) {
       printf("[f]\t%s\n", paths.output.filepaths[i]);
     }
     next_paths(&paths);
   }
-  if (paths.error != PathListError_PastTheEnd)
-  {
+  if (paths.error != PathListError_PastTheEnd) {
     printf("ERROR: %d\n", paths.error);
   }
   free_generator(&paths);
