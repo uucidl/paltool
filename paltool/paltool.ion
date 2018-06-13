@@ -91,11 +91,7 @@ func main(argc: int, argv: char**) : int {
     xyz : float[3];
     xyz_from_ipt(1, xyz, 3, hue.ipt, 3);
     srgb_from_xyz(1, srgb, 3, xyz, 3);
-    printf("%zu\t%f\t#%x %x %x\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
-    // min
-    xyz_from_ipt(1, xyz, 3, hue.min_ipt, 3);
-    srgb_from_xyz(1, srgb, 3, xyz, 3);
-    printf("%zu\t%f\t#%x %x %x\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+    printf("%zu\t%f\t#%02x %02x %02x\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
   }
   tasks_deinit();
   return 0;
