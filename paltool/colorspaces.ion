@@ -110,6 +110,70 @@ func xyz_from_srgb(n : usize, xyz : float*, xyz_stride : usize, srgb : float con
   }
 }
 
+// the IPT colorspace is designed to achieve perceptual constant hue
+// Development and Testing of a Color Space (IPT) with Improved Hue Uniformity
+// Fritz Ebner and Mark D. Fairchild 
+
+func ipt_from_xyz(n : usize, ipt : float*, ipt_stride : usize, xyz : float const*, xyz_stride : usize)
+{
+  lms_from_xyz : float[9] = {
+      0.4002, 0.7075, -0.0807,
+     -0.2280, 1.1500,  0.0612,
+      0.0,    0.0,     0.9184
+  };
+  ipt_from_slms : float[9] = {
+      0.4000,  0.4000,  0.2000,
+      4.4550, -4.8510,  0.3960,
+      0.8056,  0.3572, -1.1628,
+  };
+  for (i:=0; i<n; i++) {
+    lms : float[3];
+    lms[0] = lms_from_xyz[0]*xyz[0]+lms_from_xyz[1]*xyz[1]+lms_from_xyz[2]*xyz[2];
+    lms[1] = lms_from_xyz[3]*xyz[0]+lms_from_xyz[4]*xyz[1]+lms_from_xyz[5]*xyz[2];
+    lms[2] = lms_from_xyz[6]*xyz[0]+lms_from_xyz[7]*xyz[1]+lms_from_xyz[8]*xyz[2];
+    // slms <- lms
+    lms[0] = lms[0]<0.0? -pow(-lms[0], 0.43) : pow(lms[0], 0.43);
+    lms[1] = lms[1]<0.0? -pow(-lms[1], 0.43) : pow(lms[1], 0.43);
+    lms[2] = lms[2]<0.0? -pow(-lms[2], 0.43) : pow(lms[2], 0.43);
+    // 
+    ipt[0] = ipt_from_slms[0]*lms[0] + ipt_from_slms[1]*lms[1] + ipt_from_slms[2]*lms[2];
+    ipt[1] = ipt_from_slms[3]*lms[0] + ipt_from_slms[4]*lms[1] + ipt_from_slms[5]*lms[2];
+    ipt[2] = ipt_from_slms[6]*lms[0] + ipt_from_slms[7]*lms[1] + ipt_from_slms[8]*lms[2];
+    ipt += ipt_stride;
+    xyz += xyz_stride;
+  }
+}
+
+func xyz_from_ipt(n : usize, xyz : float*, xyz_stride : usize, ipt : float const*, ipt_stride : usize)
+{
+  xyz_from_lms : float[9] = {
+    1.85024, -1.1383,    0.238435,
+    0.366831, 0.643885, -0.0106734,
+    0,        0,         1.08885,
+  };
+  slms_from_ipt : float[9] = {
+    1.,  0.0975689,  0.205226,
+    1., -0.113876,   0.133217,
+    1.,  0.0326151, -0.676887,
+  };
+  for (i:=0; i<n; i++) {
+    lms : float[3];
+    lms[0] = slms_from_ipt[0]*ipt[0] + slms_from_ipt[1]*ipt[1] + slms_from_ipt[2]*ipt[2];
+    lms[1] = slms_from_ipt[3]*ipt[0] + slms_from_ipt[4]*ipt[1] + slms_from_ipt[5]*ipt[2];
+    lms[2] = slms_from_ipt[6]*ipt[0] + slms_from_ipt[7]*ipt[1] + slms_from_ipt[8]*ipt[2];
+    // lms<-slms
+    lms[0] = lms[0]<0.0? -pow(-lms[0], 1.0/0.43) : pow(lms[0], 1.0/0.43);
+    lms[1] = lms[1]<0.0? -pow(-lms[1], 1.0/0.43) : pow(lms[1], 1.0/0.43);
+    lms[2] = lms[2]<0.0? -pow(-lms[2], 1.0/0.43) : pow(lms[2], 1.0/0.43);
+    // xyz <-
+    xyz[0] = xyz_from_lms[0]*lms[0] + xyz_from_lms[1]*lms[1] + xyz_from_lms[2]*lms[2];
+    xyz[1] = xyz_from_lms[3]*lms[0] + xyz_from_lms[4]*lms[1] + xyz_from_lms[5]*lms[2];
+    xyz[2] = xyz_from_lms[6]*lms[0] + xyz_from_lms[7]*lms[1] + xyz_from_lms[8]*lms[2];
+    xyz += xyz_stride;
+    ipt += ipt_stride;
+  }
+}
+
 func test_colorspaces()
 {
   test_colorspace_roundtrip_srgb_rgb({0, 0, 0});
@@ -129,6 +193,13 @@ func test_colorspaces()
   test_colorspace_roundtrip_xyz_srgb({0.5, 0, 0});
   test_colorspace_roundtrip_xyz_srgb({0, 0.5, 0});
   test_colorspace_roundtrip_xyz_srgb({0, 0, 0.5});
+
+  test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, 0.0});
+  test_colorspace_roundtrip_xyz_ipt({1.0, 0.0, 0.0});
+  test_colorspace_roundtrip_xyz_ipt({0.0, -1.0, 0.0});
+  test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, -1.0});
+  test_colorspace_roundtrip_xyz_ipt({0.0, 1.0, 0.0});
+  test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, 1.0});
 }
 
 func almost_equal(a : float, b : float, tolerance : float) : bool
@@ -174,5 +245,15 @@ func test_colorspace_roundtrip_xyz_srgb(rgb : float const[3])
 
   xyz_from_srgb(1, xyz, 3, rgb, 3);
   srgb_from_xyz(1, rrgb, 3, xyz, 3);
-  #assert(almost_equal_3x(rrgb, rgb, pow(1.0/255.0, 2.2)));
+  #assert(almost_equal_3x(rrgb, rgb, 1.0/255.0));
+}
+
+func test_colorspace_roundtrip_xyz_ipt(ipt : float const[3])
+{
+  xyz : float[3];
+  ript : float[3];
+
+  xyz_from_ipt(1, xyz, 3, ipt, 3);
+  ipt_from_xyz(1, ript, 3, xyz, 3);
+  #assert(almost_equal_3x(ript, ipt, 1.0/255.0));
 }
