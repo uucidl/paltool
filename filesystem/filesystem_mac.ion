@@ -190,7 +190,7 @@ func buf_fit(bufptr : void*, elem_size : usize, added : usize) : void*
     hdr = realloc(hdr, sizeof(BufHeader) + new_capacity);
     memset(&hdr.bytes[old_capacity], 0, new_capacity - old_capacity);
     hdr.capacity = new_capacity;
-    #assert(hdr.capacity >= hdr.size && hdr.capacity <= 2*old_capacity);
+    #assert(hdr.capacity >= size);
   }
   return &hdr.bytes[0];
 }

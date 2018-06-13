@@ -77,22 +77,25 @@ func main(argc: int, argv: char**) : int {
       num_remaining_tasks += count_hues[i].pixelsRGB24? 1 : 0;
     }
   } while (num_remaining_tasks > 0);
+
+  // @todo: merge results, count occurrences per area
+  hue_counts_per_task :  HueCounts* = buf_fit(NULL, buf_len(count_hues, sizeof(count_hues[0])), sizeof(HueCounts));
   for (i:=0; i<buf_len(count_hues, sizeof(count_hues[0])); i++) {
-    transform := count_hues[i];
-    hues := transform.hues;
-    for(hue_i:=0; hue_i<buf_len(hues, sizeof(hues[0])); hue_i++) {
-      hue := hues[hue_i];
-      srgb : float[3];
-      ipt : float[3] = {
-	  1.0,
-	  cos(hue.hue_angle),
-	  sin(hue.hue_angle),
-      };
-      xyz : float[3];
-      xyz_from_ipt(1, xyz, 3, ipt, 3);
-      srgb_from_xyz(1, srgb, 3, xyz, 3);	
-      printf("%zu\t%f\t%f %f %f\t#%x %x %x\n", hue.num, hue.hue_angle, ipt[0], ipt[1], ipt[2], int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
-    }
+      buf_push(hue_counts_per_task, &count_hues[i].result, sizeof(count_hues[i].result));
+  }
+  hue_counts := merge_hue_counts(buf_len(hue_counts_per_task, sizeof(hue_counts_per_task[0])), &hue_counts_per_task[0]);
+  for(hue_i:=0; hue_i<buf_len(hue_counts.hues, sizeof(hue_counts.hues[0])); hue_i++) {
+    hue := hue_counts.hues[hue_i];
+    if (hue.num == 1) { continue; }
+    srgb : float[3];
+    xyz : float[3];
+    xyz_from_ipt(1, xyz, 3, hue.ipt, 3);
+    srgb_from_xyz(1, srgb, 3, xyz, 3);
+    printf("%zu\t%f\t#%x %x %x\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+    // min
+    xyz_from_ipt(1, xyz, 3, hue.min_ipt, 3);
+    srgb_from_xyz(1, srgb, 3, xyz, 3);
+    printf("%zu\t%f\t#%x %x %x\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
   }
   tasks_deinit();
   return 0;
@@ -163,14 +166,22 @@ struct HueWithOccurence
 {
   hue_angle : float;
   num : usize;
+  ipt : float[3];
+  min_ipt : float[3];
 }
 
 struct CountHueTransform
 {
   num_pixels : usize;
   pixelsRGB24 : uint8*;
-  hue_occurences : Map;
+  result : HueCounts;
+}
+
+struct HueCounts
+{
+  num_pixels : usize;
   hues : HueWithOccurence*;
+  hue_occurences : Map; // @todo: can be moved away after use, actually transient
 }
 
 func bits_float(x : float) : uint32
@@ -185,43 +196,84 @@ func count_hue_hue_key(hue_angle : float) : uint64
 {
   return 0xf | (bits_float(hue_angle)<<4);
 }
-  
+
+func record_raw_hue(count : HueCounts*, hue_elem : HueWithOccurence)
+{
+  hue_key := count_hue_hue_key(hue_elem.hue_angle);
+  hue_idx_plus_one := intptr(map_get(&count.hue_occurences, hue_key));
+  if (hue_idx_plus_one == 0)
+  {
+    hue_idx_plus_one = buf_len(count.hues, sizeof(count.hues[0])) + 1;
+    count.hues = buf_fit(count.hues, sizeof(count.hues[0]), 1);
+    buf_push(count.hues, &hue_elem, sizeof(hue_elem));
+    map_put(&count.hue_occurences, hue_key, (:void*)hue_idx_plus_one);
+  }
+  else
+  {
+    d_hue := &count.hues[hue_idx_plus_one - 1];
+    d_hue.num += hue_elem.num;
+    if (hue_elem.ipt[0] > d_hue.ipt[0]) {
+      d_hue.ipt[0] = hue_elem.ipt[0];
+      d_hue.ipt[1] = hue_elem.ipt[1];
+      d_hue.ipt[2] = hue_elem.ipt[2];
+    }
+    if (hue_elem.min_ipt[0] < d_hue.min_ipt[0]) {
+      d_hue.min_ipt[0] = hue_elem.min_ipt[0];
+      d_hue.min_ipt[1] = hue_elem.min_ipt[1];
+      d_hue.min_ipt[2] = hue_elem.min_ipt[2];
+    }
+  }
+}
+
+// @todo window colors to not over represent highs and lows
+
+func record_pixel_hue(count : HueCounts*, srgb : float[3])
+{
+  count.num_pixels++;
+  xyz : float[3];
+  xyz_from_srgb(1, xyz, 3, srgb, 3);
+  ipt : float[3];
+  ipt_from_xyz(1, ipt, 3, xyz, 3);
+  hue_angle := atan2(ipt[1], ipt[2]);
+  // @todo pass as parameter
+  quantized_hue_angle := round(3000.0*hue_angle)/3000.0;
+  record_raw_hue(count, {
+        hue_angle = quantized_hue_angle,
+        num = 1,
+        ipt = { ipt[0], ipt[1], ipt[2] },
+        min_ipt = { ipt[0], ipt[1], ipt[2] },
+  });
+}
+
 func count_hue_task(opaque_data : void*)
 {
   transform : CountHueTransform* = opaque_data;
-  transform.hues = buf_fit(transform.hues, sizeof(transform.hues[0]), transform.num_pixels/4);
+  transform.result.hues = buf_fit(transform.result.hues, sizeof(transform.result.hues[0]), transform.num_pixels/4);
   {
     src := transform.pixelsRGB24;
     for (i:=0; i<transform.num_pixels; i++) {
       srgb : float[3] = { src[0]/255.0, src[1]/255.0, src[2]/255.0 };
-      xyz : float[3];
-      xyz_from_srgb(1, xyz, 3, srgb, 3);
-      ipt : float[3];
-      ipt_from_xyz(1, ipt, 3, xyz, 3);
-      hue_angle := atan2(ipt[1], ipt[2]);
-      // @todo quantize hue_angle
-      hue_key := count_hue_hue_key(hue_angle);
-      hue_idx_plus_one := intptr(map_get(&transform.hue_occurences, hue_key));
-      if (hue_idx_plus_one == 0)
-      {
-        hue : HueWithOccurence = {
-	    hue_angle = hue_angle,
-	    num = 1,
-	};
-	hue_idx_plus_one = buf_len(transform.hues, sizeof(transform.hues[0])) + 1;
-	transform.hues = buf_fit(transform.hues, sizeof(transform.hues[0]), 1);
-	buf_push(transform.hues, &hue, sizeof(hue));
-	map_put(&transform.hue_occurences, hue_key, (:void*)hue_idx_plus_one);
-      }
-      else
-      {
-	transform.hues[hue_idx_plus_one - 1].num++;
-      }
+      record_pixel_hue(&transform.result, srgb);
       src += 3;
     }
   }
   image_free(transform.pixelsRGB24); // @todo move outside to dependent task
   transform.pixelsRGB24 = NULL;
+}
+
+func merge_hue_counts(num_counts : usize, counts : HueCounts*) : HueCounts
+{
+  // @todo normalize probability per surface area.
+  result : HueCounts;
+  for (count_i:=0; count_i<num_counts; count_i++) {
+      count := counts[count_i];
+      for (hue_i:=0; hue_i<buf_len(count.hues, sizeof(counts.hues[0])); hue_i++) {
+          hue := count.hues[hue_i];
+          record_raw_hue(&result, hue);
+          result.num_pixels += count.num_pixels;
+      }
+  }
+  return result;
 }
 
 struct Map

@@ -175,18 +175,21 @@ func test_colorspaces()
   red_xyz : float[3];
   green_xyz : float[3];
   blue_xyz : float[3];
-
   xyz_from_srgb(1, black_xyz, 3, black_srgb, 3);
   xyz_from_srgb(1, white_xyz, 3, white_srgb, 3);
   xyz_from_srgb(1, red_xyz, 3, red_srgb, 3);
   xyz_from_srgb(1, green_xyz, 3, green_srgb, 3);
   xyz_from_srgb(1, blue_xyz, 3, blue_srgb, 3);
+
   printf("black: %f %f %f\n", black_xyz[0], black_xyz[1], black_xyz[2]);
   printf("white: %f %f %f\n", white_xyz[0], white_xyz[1], white_xyz[2]);
   printf("red: %f %f %f\n", red_xyz[0], red_xyz[1], red_xyz[2]);
   printf("green: %f %f %f\n", green_xyz[0], green_xyz[1], green_xyz[2]);
   printf("blue: %f %f %f\n", blue_xyz[0], blue_xyz[1], blue_xyz[2]);
-  
+
+  d65_xyz : float[3] = { 0.9505, 1.0000, 1.0890 };
+  #assert(almost_equal_3x(white_xyz, d65_xyz, 1.0/1000.0));
+
   test_colorspace_roundtrip_srgb_rgb({0, 0, 0});
   test_colorspace_roundtrip_srgb_rgb({1, 0, 0});
   test_colorspace_roundtrip_srgb_rgb({0, 1, 0});

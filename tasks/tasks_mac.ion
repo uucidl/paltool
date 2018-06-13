@@ -48,7 +48,7 @@ struct NewTaskData
 
 func _add_task_submission_task(opaque_data : void*) {
   data : NewTaskData* = opaque_data;
-  generation : uint16 = 0;
+  generation : uint16 = 1;
   idx : usize = -1;
   for (i:=0; i<registry.len; i++) {
     if (!registry.values[i].fn) {
