@@ -163,6 +163,30 @@ func xyz_from_ipt(n : usize, xyz : float*, xyz_stride : usize, ipt : float const
 
 func test_colorspaces()
 {
+  // @todo check colorspace coverage, in particular extremas from ipt/xyz/srgb
+  black_srgb : float[3] = { 0, 0, 0};
+  white_srgb : float[3] = { 1, 1, 1 };
+  red_srgb : float[3] = { 1, 0, 0 };
+  green_srgb : float[3] = { 0, 1, 0 };
+  blue_srgb : float[3] = { 0, 0, 1 };
+
+  black_xyz : float[3];
+  white_xyz : float[3];
+  red_xyz : float[3];
+  green_xyz : float[3];
+  blue_xyz : float[3];
+
+  xyz_from_srgb(1, black_xyz, 3, black_srgb, 3);
+  xyz_from_srgb(1, white_xyz, 3, white_srgb, 3);
+  xyz_from_srgb(1, red_xyz, 3, red_srgb, 3);
+  xyz_from_srgb(1, green_xyz, 3, green_srgb, 3);
+  xyz_from_srgb(1, blue_xyz, 3, blue_srgb, 3);
+  printf("black: %f %f %f\n", black_xyz[0], black_xyz[1], black_xyz[2]);
+  printf("white: %f %f %f\n", white_xyz[0], white_xyz[1], white_xyz[2]);
+  printf("red: %f %f %f\n", red_xyz[0], red_xyz[1], red_xyz[2]);
+  printf("green: %f %f %f\n", green_xyz[0], green_xyz[1], green_xyz[2]);
+  printf("blue: %f %f %f\n", blue_xyz[0], blue_xyz[1], blue_xyz[2]);
+  
   test_colorspace_roundtrip_srgb_rgb({0, 0, 0});
   test_colorspace_roundtrip_srgb_rgb({1, 0, 0});
   test_colorspace_roundtrip_srgb_rgb({0, 1, 0});

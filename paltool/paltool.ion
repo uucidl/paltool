@@ -81,8 +81,17 @@ func main(argc: int, argv: char**) : int {
     transform := count_hues[i];
     hues := transform.hues;
     for(hue_i:=0; hue_i<buf_len(hues, sizeof(hues[0])); hue_i++) {
-      hue := hues[hue_i]; 
-      printf("%zu\t%f\n", hue.num, hue.hue_angle);
+      hue := hues[hue_i];
+      srgb : float[3];
+      ipt : float[3] = {
+	  1.0,
+	  cos(hue.hue_angle),
+	  sin(hue.hue_angle),
+      };
+      xyz : float[3];
+      xyz_from_ipt(1, xyz, 3, ipt, 3);
+      srgb_from_xyz(1, srgb, 3, xyz, 3);	
+      printf("%zu\t%f\t%f %f %f\t#%x %x %x\n", hue.num, hue.hue_angle, ipt[0], ipt[1], ipt[2], int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
     }
   }
   tasks_deinit();
