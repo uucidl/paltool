@@ -1,1 +1,9 @@
 #foreign(header="stb_image.h")
+
+@foreign("stbi_load")
+func image_load(filename : char const*, d_x : int*, d_y : int*, d_channels_in_file : int*, desired_channels : int) : uint8*;
+
+@foreign("stbi_image_free")
+func image_free(data : uint8*);
+
+#foreign(source="codecs.c")

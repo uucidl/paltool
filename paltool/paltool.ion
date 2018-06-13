@@ -5,7 +5,20 @@ import libc { ... }
 import tasks { ... }
 import codecs { ... }
 
+func strbuf_push(bufptr : char**, str : char const*) {
+  n := strlen(str);
+  *bufptr = buf_fit(*bufptr, n);
+  buf_push(*bufptr, str, n);
+}
+
+func strbuf_terminate(bufptr : char**) {
+  *bufptr = buf_fit(*bufptr, 1);
+  buf_push(*bufptr, "\0", 1);
+}
+
 func main(argc: int, argv: char**) : int {
+  test_colorspaces();
+
   tasks_init();
   path : char*;
   argi := 1;
@@ -20,7 +33,19 @@ func main(argc: int, argv: char**) : int {
       file := paths.output.filepaths[i];
       printf("[f]\t%s", file);
       if (str_match_suffix((:char*)file, ".jpg") || str_match_suffix((:char*)file, ".JPG")) {
+        abspath : char*;
+        strbuf_push(&abspath, path);
+        strbuf_push(&abspath, "/");
+        strbuf_push(&abspath, (:char*)file);
+        strbuf_push(&abspath, "\0");
+        strbuf_terminate(&abspath);
 	printf("\t[image/jpeg]");
+        x : int;
+        y : int;
+        n : int;
+        data := image_load(abspath, &x, &y, &n, 3);
+        printf("(image %lx width: %d, height: %d, comps: %d)\n", (:intptr)data, x, y, n);
+	image_free(data);
       }
       printf("\n");
     }

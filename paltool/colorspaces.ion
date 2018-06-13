@@ -1,0 +1,178 @@
+import libc {...}
+
+struct HueTransform
+{
+  pixelsRGB24 : uint8[3]*;
+  num_pixels : usize;
+  hue_vectors : float[2]*;
+}
+
+func hue_transform_task(opaque_data : void*)
+{
+  hue_transform : HueTransform* = opaque_data;
+  
+}
+
+func srgb_comp_from_rgb(c : float) : float
+{
+    return c>0.0031308
+      ? (1.055)*pow(c, 1.0/2.4) - 0.055
+      : 12.92*c;
+}
+
+func srgb_from_rgb(n : usize, srgb : float*, srgb_stride : usize, rgb : float const*, rgb_stride : usize) {
+  #assert(rgb_stride >= 3);
+  #assert(srgb_stride >= 3);
+  for (i:=0; i<n; i++) {
+    srgb[0] = srgb_comp_from_rgb(rgb[0]);
+    srgb[1] = srgb_comp_from_rgb(rgb[1]);
+    srgb[2] = srgb_comp_from_rgb(rgb[2]);
+    rgb += rgb_stride;
+    srgb += srgb_stride;
+  }
+}
+
+func rgb_comp_from_srgb(s : float) : float
+{
+    return s>0.04045
+      ? pow((s + 0.055)/(1.055), 2.4)
+      : s / 12.92;
+}
+
+func rgb_from_srgb(n : usize, rgb : float*, rgb_stride : usize, srgb : float const*, srgb_stride : usize) {
+  #assert(rgb_stride >= 3);
+  #assert(srgb_stride >= 3);
+  for (i:=0; i<n; i++) {
+    rgb[0] = rgb_comp_from_srgb(srgb[0]);
+    rgb[1] = rgb_comp_from_srgb(srgb[1]);
+    rgb[2] = rgb_comp_from_srgb(srgb[2]);
+    rgb += rgb_stride;
+    srgb += srgb_stride;
+  }
+}
+
+func rgb_from_xyz(n : usize, rgb : float*, rgb_stride : usize, xyz : float const*, xyz_stride : usize) {
+  // @url: http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+  m : float[9] = {
+    3.2404542, -1.5371385, -0.4985314,
+   -0.9692660,  1.8760108,  0.0415560,
+    0.0556434, -0.2040259,  1.0572252,
+  };
+  for (i:=0; i<n; i++) {
+    rgb[0] = m[0]*xyz[0] + m[1]*xyz[1] + m[2]*xyz[2];
+    rgb[1] = m[3]*xyz[0] + m[4]*xyz[1] + m[5]*xyz[2];
+    rgb[2] = m[6]*xyz[0] + m[7]*xyz[1] + m[8]*xyz[2];
+    rgb += rgb_stride;
+    xyz += xyz_stride;
+  }
+}
+
+func xyz_from_rgb(n : usize, xyz : float*, xyz_stride : usize, rgb : float const*, rgb_stride : usize)
+{
+ // @url: http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+ m : float[9] = {
+   0.4124564,  0.3575761,  0.1804375,
+   0.2126729,  0.7151522,  0.0721750,
+   0.0193339,  0.1191920,  0.9503041,
+ };
+ for (i:=0; i<n; i++) {
+    xyz[0] = m[0]*rgb[0] + m[1]*rgb[1] + m[2]*rgb[2];
+    xyz[1] = m[3]*rgb[0] + m[4]*rgb[1] + m[5]*rgb[2];
+    xyz[2] = m[6]*rgb[0] + m[7]*rgb[1] + m[8]*rgb[2];
+    xyz += xyz_stride;
+    rgb += rgb_stride;
+ }  
+}
+
+
+func srgb_from_xyz(n : usize, srgb : float*, srgb_stride : usize, xyz : float const*, xyz_stride : usize) {
+  #assert(xyz_stride >= 3);
+  #assert(srgb_stride >= 3);
+  for (i:=0; i<n; i++) {
+    rgb : float[3];
+    rgb_from_xyz(1, rgb, 3, xyz, 3);
+    srgb_from_rgb(1, srgb, 3, rgb, 3);
+    srgb += srgb_stride;
+    xyz += xyz_stride;
+  }
+}
+
+func xyz_from_srgb(n : usize, xyz : float*, xyz_stride : usize, srgb : float const*, srgb_stride : usize)
+{
+  #assert(xyz_stride >= 3);
+  #assert(srgb_stride >= 3);
+ for (i:=0; i<n; i++) {
+    rgb : float[3];
+    rgb_from_srgb(1, rgb, 3, srgb, 3);
+    xyz_from_rgb(1, xyz, 3, rgb, 3);
+    srgb += srgb_stride;
+    xyz += xyz_stride;
+  }
+}
+
+func test_colorspaces()
+{
+  test_colorspace_roundtrip_srgb_rgb({0, 0, 0});
+  test_colorspace_roundtrip_srgb_rgb({1, 0, 0});
+  test_colorspace_roundtrip_srgb_rgb({0, 1, 0});
+  test_colorspace_roundtrip_srgb_rgb({0, 0, 1});
+
+  test_colorspace_roundtrip_xyz_rgb({0, 0, 0});
+  test_colorspace_roundtrip_xyz_rgb({1, 0, 0});
+  test_colorspace_roundtrip_xyz_rgb({0, 1, 0});
+  test_colorspace_roundtrip_xyz_rgb({0, 0, 1});
+  
+  test_colorspace_roundtrip_xyz_srgb({0, 0, 0});
+  test_colorspace_roundtrip_xyz_srgb({1, 0, 0});
+  test_colorspace_roundtrip_xyz_srgb({0, 1, 0});
+  test_colorspace_roundtrip_xyz_srgb({0, 0, 1});
+  test_colorspace_roundtrip_xyz_srgb({0.5, 0, 0});
+  test_colorspace_roundtrip_xyz_srgb({0, 0.5, 0});
+  test_colorspace_roundtrip_xyz_srgb({0, 0, 0.5});
+}
+
+func almost_equal(a : float, b : float, tolerance : float) : bool
+{
+  if (fabs (a - b) < tolerance) {
+    return 1;
+  } else if (fabs (a) > fabs (b)) {
+    return fabs ((a - b) / b) < tolerance;
+  } else {
+    return fabs ((a - b) / a) < tolerance;
+  }
+}
+
+func almost_equal_3x(a : float const[3], b : float const[3], tolerance : float) : bool
+{
+  return almost_equal(a[0], b[0], tolerance) && almost_equal(a[1], b[1], tolerance) && almost_equal(a[2], b[2], tolerance);
+}
+
+func test_colorspace_roundtrip_srgb_rgb(rgb : float const[3])
+{
+  srgb : float[3];
+  rrgb : float[3];
+
+  srgb_from_rgb(1, srgb, 3, rgb, 3);
+  rgb_from_srgb(1, rrgb, 3, srgb, 3);
+  #assert(almost_equal_3x(rrgb, rgb, 1.0/255.0));
+}
+
+func test_colorspace_roundtrip_xyz_rgb(rgb : float const[3])
+{
+  xyz : float[3];
+  rrgb : float[3];
+
+  xyz_from_rgb(1, xyz, 3, rgb, 3);
+  rgb_from_xyz(1, rrgb, 3, xyz, 3);
+  #assert(almost_equal_3x(rrgb, rgb, pow(1.0/255.0, 2.2)));
+}
+
+func test_colorspace_roundtrip_xyz_srgb(rgb : float const[3])
+{
+  xyz : float[3];
+  rrgb : float[3];
+
+  xyz_from_srgb(1, xyz, 3, rgb, 3);
+  srgb_from_xyz(1, rrgb, 3, xyz, 3);
+  #assert(almost_equal_3x(rrgb, rgb, pow(1.0/255.0, 2.2)));
+}

@@ -110,15 +110,15 @@ func platform_next_paths(generator : PathListGenerator*)
     entry := unpack_query_result(next_entry, remaining_num_bytes);
     if (entry.objtype == VREG) {
        generator.output.filepaths = buf_fit(generator.output.filepaths, sizeof(entry.name));
-       push(generator.output.filepaths, &entry.name, sizeof(entry.name));
+       buf_push(generator.output.filepaths, &entry.name, sizeof(entry.name));
     } else {
        generator.output.dirpaths = buf_fit(generator.output.dirpaths, sizeof(entry.name));
-       push(generator.output.dirpaths, &entry.name, sizeof(entry.name));
+       buf_push(generator.output.dirpaths, &entry.name, sizeof(entry.name));
     }
     next_entry += entry.size;
   }
-  generator.output.num_filepaths = len(generator.output.filepaths, sizeof(generator.output.filepaths[0]));
-  generator.output.num_dirpaths = len(generator.output.dirpaths, sizeof(generator.output.filepaths[0]));
+  generator.output.num_filepaths = buf_len(generator.output.filepaths, sizeof(generator.output.filepaths[0]));
+  generator.output.num_dirpaths = buf_len(generator.output.dirpaths, sizeof(generator.output.filepaths[0]));
 }
 
 func platform_free_generator(generator : PathListGenerator*)
@@ -194,7 +194,7 @@ func buf_fit(bufptr : void*, added_size : usize) : void*
   return &hdr.bytes[0];
 }
 
-func push(bufptr : void*, data : void*, data_size : usize)
+func buf_push(bufptr : void*, data : void const*, data_size : usize)
 {
   hdr := buf_hdr(bufptr);
   #assert(hdr.magic == BufHeaderMagic);
@@ -204,7 +204,7 @@ func push(bufptr : void*, data : void*, data_size : usize)
   hdr.size += data_size;
 }
 
-func len(bufptr : void*, data_size : usize) : usize
+func buf_len(bufptr : void*, data_size : usize) : usize
 {
   size := bufptr? buf_hdr(bufptr).size : 0;
   #assert(size % data_size == 0);
