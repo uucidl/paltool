@@ -1,18 +1,5 @@
 import libc {...}
 
-struct HueTransform
-{
-  pixelsRGB24 : uint8[3]*;
-  num_pixels : usize;
-  hue_vectors : float[2]*;
-}
-
-func hue_transform_task(opaque_data : void*)
-{
-  hue_transform : HueTransform* = opaque_data;
-  
-}
-
 func srgb_comp_from_rgb(c : float) : float
 {
     return c>0.0031308

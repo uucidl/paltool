@@ -7,12 +7,12 @@ import codecs { ... }
 
 func strbuf_push(bufptr : char**, str : char const*) {
   n := strlen(str);
-  *bufptr = buf_fit(*bufptr, n);
+  *bufptr = buf_fit(*bufptr, sizeof(**bufptr), n);
   buf_push(*bufptr, str, n);
 }
 
 func strbuf_terminate(bufptr : char**) {
-  *bufptr = buf_fit(*bufptr, 1);
+  *bufptr = buf_fit(*bufptr, sizeof(**bufptr), 1);
   buf_push(*bufptr, "\0", 1);
 }
 
@@ -25,6 +25,8 @@ func main(argc: int, argv: char**) : int {
   expect_str(&argi, argc, argv, &path);
   printf("INFO: listing all files from root: %s\n", path);
   paths := find_all_files_recursively((:uint8*)path);
+  tasks : Task*;
+  hue_transforms : HueTransform**;
   while (paths.error == PathListError_None) {
     for (i := 0; i < paths.output.num_dirpaths; i++) {
       printf("[d]\t%s\n", paths.output.dirpaths[i]);
@@ -44,8 +46,17 @@ func main(argc: int, argv: char**) : int {
         y : int;
         n : int;
         data := image_load(abspath, &x, &y, &n, 3);
-        printf("(image %lx width: %d, height: %d, comps: %d)\n", (:intptr)data, x, y, n);
-	image_free(data);
+	buf_free(abspath);
+	abspath = NULL;
+	
+        transform : HueTransform* = calloc(1, sizeof(HueTransform));
+	transform.pixelsRGB24 = data;
+	transform.num_pixels = x*y;
+        task := create_task(hue_transform_task, transform);
+	tasks = buf_fit(tasks, sizeof(tasks[0]), 1);
+	buf_push(tasks, &task, sizeof(tasks[0]));
+	hue_transforms = buf_fit(hue_transforms, sizeof(hue_transforms[0]), 1);
+	buf_push(hue_transforms, &transform, sizeof(transform));
       }
       printf("\n");
     }
@@ -54,7 +65,18 @@ func main(argc: int, argv: char**) : int {
   if (paths.error != PathListError_PastTheEnd) {
     printf("ERROR: %d\n", paths.error);
   }
+  for (i:=0; i<buf_len(tasks, sizeof(tasks[0])); i++) {
+    start_task(tasks[i]);
+  }
   free_generator(&paths);
+  // busy loop for remaining tasks
+  num_remaining_tasks := 0;
+  do {
+    num_remaining_tasks = 0;
+    for (i:=0; i<buf_len(hue_transforms, sizeof(hue_transforms[0])); i++) {
+      num_remaining_tasks += hue_transforms[i].pixelsRGB24? 1 : 0;
+    }
+  } while (num_remaining_tasks > 0);
   tasks_deinit();
   return 0;
 }
@@ -119,4 +141,104 @@ func die_at(argi: int, argc:int, argv: char**, error: char*) {
  printf("USAGE: %s\n", USAGE);
  exit(1);
 }
+
+struct HueTransform
+{
+  num_pixels : usize;
+  pixelsRGB24 : uint8*;
+  hues_occurences : Map;
+}
+
+func bits_float(x : float) : uint32
+{
+  y : uint32;
+  #static_assert(sizeof(float) == sizeof(uint32));
+  memcpy(&y, &x, sizeof(y));
+  return y;
+}
+  
+func hue_transform_hue_key(hue_angle : float) : uint64
+{
+  return 0xf | (bits_float(hue_angle)<<4);
+}
+  
+func hue_transform_task(opaque_data : void*)
+{
+  transform : HueTransform* = opaque_data;
+  {
+    src := transform.pixelsRGB24;
+    for (i:=0; i<transform.num_pixels; i++) {
+      srgb : float[3] = { src[0]/255.0, src[1]/255.0, src[2]/255.0 };
+      xyz : float[3];
+      xyz_from_srgb(1, xyz, 3, srgb, 3);
+      ipt : float[3];
+      ipt_from_xyz(1, ipt, 3, xyz, 3);
+      hue_angle := atan2(ipt[1], ipt[2]);
+      printf("%f\n", hue_angle);
+      src += 3;
+    }
+  }
+  image_free(transform.pixelsRGB24); // @todo move outside to dependent task
+  transform.pixelsRGB24 = NULL;
+}
+
+struct Map
+{
+  keys : uint64*;
+  ptrs : void*;
+  cap : usize;
+  len : usize;
+}
+
+func map_grow(map : Map, size : usize)
+{
+  #assert(false);
+}
+
+func map_free(map : Map*)
+{
+  #assert(false);
+}
+
+// returns value at key
+func map_get(map : Map const*, key : uint64) : void*
+{
+  #assert(false);
+  return NULL;
+}
+
+// grows the map if necessary
+func map_put(map : Map*, key : uint64, data : void*)
+{
+  #assert(false);
+}
+
+func map_remove(map : Map*, key : uint64)
+{
+  #assert(false);
+}
+
+func hash_uint64(x : uint64) : uint64
+{
+  x *= 0xff51afd7ed558ccd;
+  x ^= x >> 32;
+  return x;
+}
+
+func hash_bytes(bytes : char const*, num_bytes : usize) : uint64
+{
+  x : uint64 = 0xcbf29ce484222325;
+  for (i:=0; i<num_bytes; i++)
+  {
+    x ^= bytes[i];
+    x *= 0x100000001b3;
+    x ^= x >> 32;
+  }
+  return x;
+}
+
+func hash_ptr(ptr : void const*) : uint64
+{
+  return hash_uint64(uintptr(ptr));
+}  
 
