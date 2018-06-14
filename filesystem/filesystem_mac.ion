@@ -106,7 +106,7 @@ func platform_next_paths(generator : PathListGenerator*)
   batch_offset := 0;
   next_entry := (:uint8*)&generator.resources.batch_mem[0];
   for (entries_idx := 0; entries_idx < num_entries; entries_idx++) {
-    remaining_num_bytes := (:uint8*)&generator.resources.batch_mem[sizeof(generator.resources.batch_mem)] - next_entry;
+  remaining_num_bytes := (:uint8*)&generator.resources.batch_mem[sizeof(generator.resources.batch_mem)/sizeof(generator.resources.batch_mem[0])] - next_entry;
     entry := unpack_query_result(next_entry, remaining_num_bytes);
     if (entry.objtype == VREG) {
        generator.output.filepaths = buf_fit(generator.output.filepaths, sizeof(entry.name), 1);
