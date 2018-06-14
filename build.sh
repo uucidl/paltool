@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-CFLAGS="-fdiagnostics-absolute-paths -g -O1"
+CFLAGS="-g -O3"
 
 HERE="$(dirname "${0}")"
 pushd "${HERE}"

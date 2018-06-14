@@ -123,6 +123,6 @@ func puts_task(data : void*) {
 }
 
 func bits(x : uint64, start : int, len : int) : uint64 {
-  return (x<<start) & ((1<<len) - 1);
+  return (x<<start) & ((uint64(1)<<len) - 1);
 }
 	      

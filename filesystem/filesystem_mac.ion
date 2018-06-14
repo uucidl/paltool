@@ -138,7 +138,7 @@ struct BufHeader
 {
   capacity : int32;
   size     : int32;
-  magic    : int32;
+  magic    : int64;
   bytes    : uint8[1];
 }
 
