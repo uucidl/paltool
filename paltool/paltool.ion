@@ -53,10 +53,9 @@ func main(argc: int, argv: char**) : int {
 	transform.pixelsRGB24 = data;
 	transform.num_pixels = x*y;
         task := create_task(count_hue_task, transform);
-	tasks = buf_fit(tasks, sizeof(tasks[0]), 1);
-	buf_push(tasks, &task, sizeof(tasks[0]));
 	count_hues = buf_fit(count_hues, sizeof(count_hues[0]), 1);
 	buf_push(count_hues, &transform, sizeof(transform));
+	start_task(task);
       }
       printf("\n");
     }
@@ -64,9 +63,6 @@ func main(argc: int, argv: char**) : int {
   }
   if (paths.error != PathListError_PastTheEnd) {
     printf("ERROR: %d\n", paths.error);
-  }
-  for (i:=0; i<buf_len(tasks, sizeof(tasks[0])); i++) {
-    start_task(tasks[i]);
   }
   free_generator(&paths);
   // busy loop for remaining tasks
@@ -97,66 +93,13 @@ func main(argc: int, argv: char**) : int {
   return 0;
 }
 
-func str_match_suffix(str : char const*, suffix : char const*) : bool {
-  n := strlen(str);
-  mn := strlen(suffix);
-  while(n && mn && str[n - 1] == suffix[mn - 1]) {
-    mn--;
-    n--;
-  }
-  return mn == 0; 
-}
-
-func expect_arg(argi: int, argc: int, argv: char**, error : char*) {
-  if (argi >= argc) {
-    die_at(argi, argc, argv, error);
-  }
-}
-
-func expect_str(argi: int*, argc: int, argv: char**, dest_str : char**) {
-  expect_arg(*argi, argc, argv, "expected string");
-  *dest_str = argv[*argi];
-  *argi = *argi + 1;
-}
-
-func die_at(argi: int, argc:int, argv: char**, error: char*) {
-  printf("ERROR: %s:\n", error);
-  {
-    printf("ERROR: ");
-    pre := "";
-    for (i:=0; i<argc; i++) {
-      printf("%s%s", pre, argv[i]);
-      pre = " ";
-    }
-    printf("\n");
-  }
-  printf("ERROR: ");
- pre := "";
- for (i:=0; i<argi; i++) {
-   printf("%s%*s", pre, (:int)strlen(argv[i]), "");
-   pre = " ";
- }
- if (argi < argc)
- {
-   printf("%s", pre);
-   for (i:=0; i<strlen(argv[argi]); i++) {
-     printf("^");
-   }
-   pre = " ";
- }
- else
- {
-   printf("%s%s", pre, "^");
- }
- pre = " ";
- for (i:=argi+1; i<argc; i++) {
-   printf("%s%*s", pre, (:int)strlen(argv[i]), "");
-   pre = " ";
- }
- printf("\n");
- printf("USAGE: %s\n", USAGE);
- exit(1);
-}
+// @todo separate transform into:
+//
+// IPTFromRGBTransform > CountHueTransform
+//
+// In particular, having IPT separately can allow us more flexible hue groupings.
+//
+// IPTFromRGBTransform > SortBy{PT,I} > CountPT+CountIByPT
 
 struct HueWithOccurence
 {
@@ -271,177 +214,4 @@ func merge_hue_counts(num_counts : usize, counts : HueCounts*) : HueCounts
   }
   return result;
 }
-
-struct Map
-{
-  keys : uint64*;
-  ptrs : void**;
-  cap : usize;
-  len : usize;
-}
-
-func map_grow(map : Map*, size : usize)
-{
-  size = pow2_ge_uint64(size);
-  new_map : Map = {
-    keys = calloc(size, sizeof(map.keys[0])),
-    ptrs = malloc(size * sizeof(map.ptrs[0])),
-    cap = size,
-  };
-  if (!new_map.keys) { exit(1); }
-  if (!new_map.ptrs) { exit(1); }
-
-  for (i:=0; i<map.cap; i++)
-  {
-    if (map.keys[i])
-    {
-      map_put(&new_map, map.keys[i], map.ptrs[i]);
-    }
-  }
-
-  #assert(is_pow2_uint64(new_map.cap));
-  #assert(new_map.len == map.len);
-
-  free(map.keys);
-  free(map.ptrs);
-
-  *map = new_map;
-}
-
-func map_free(map : Map*)
-{
-  free(map.keys); map.keys = NULL;
-  free(map.ptrs); map.ptrs = NULL;
-  *map = {};
-}
-
-// returns value at key
-func map_get(map : Map const*, key : uint64) : void*
-{
-  #assert(map.cap >= map.len);
-
-  index := hash_uint64(key);
-  rest := map.len;
-  while (rest > 0) {
-    index &= (map.cap - 1);
-    if (!map.keys[index]) {
-      return NULL;
-    }
-    if (map.keys[index] == key) {
-      return map.ptrs[index];
-    }
-    index++;
-    rest--;
-  }
-  return NULL;
-}
-
-// puts value in hasmapable, returns previous value
-// grows the map if necessary
-func map_put(map : Map*, key : uint64, data : void*)
-{
-  #assert(key); // key == 0 is disallowed, as it is the empty entry sentinel
-  if (map.cap == 0 || map.cap - map.len < map.len)
-  {
-    map_grow(map, 1 + 2 * map.cap);
-  }
-
-  #assert(is_pow2_uint64(map.cap));
-  index := hash_uint64(key);
-  last := index;
-  do
-  {
-    index &= map.cap - 1;
-    if (!map.keys[index])
-    {
-      map.keys[index] = key;
-      map.ptrs[index] = data;
-      map.len++;
-      return;
-    }
-    else if (map.keys[index] == key)
-    {
-      map.ptrs[index] = data;
-      return;
-    }
-    index++;
-  } while (index != last);
-  #assert(false);
-  exit(1);
-}
-
-func map_remove(map : Map*, key : uint64)
-{
-  if (!key) {
-    return;
-  }
-  #assert(is_pow2_uint64(map.cap));
-  index := hash_uint64(key);
-  last := index;
-  do
-  {
-    index &= map.cap - 1;
-    if (map.keys[index] == key)
-    {
-      map.keys[index] = 0;
-      map.len--;
-      return;
-    }
-    index++;
-  } while (index != last);
-  #assert(0);
-  exit(1);
-}
-
-func hash_uint64(x : uint64) : uint64
-{
-  x *= 0xff51afd7ed558ccd;
-  x ^= x >> 32;
-  return x;
-}
-
-func hash_bytes(bytes : char const*, num_bytes : usize) : uint64
-{
-  x : uint64 = 0xcbf29ce484222325;
-  for (i:=0; i<num_bytes; i++)
-  {
-    x ^= bytes[i];
-    x *= 0x100000001b3;
-    x ^= x >> 32;
-  }
-  return x;
-}
-
-func hash_ptr(ptr : void const*) : uint64
-{
-  return hash_uint64(uintptr(ptr));
-}
-
-func pow2_ge_uint64(x : uint64) : uint64
-{
-  for (i : uint = 0; ; i++)
-  {
-    if ((1uLL << i) >= x) { return 1uLL << i; }
-  }
-  return 1;
-}
-
-func is_pow2_uint64(x : uint64) : bool
-{
-  i : int;
-  for (i = 0; i < 64; i++)
-  {
-    if (x & 1) { break; }
-    x >>= 1;
-  }
-  if (i == 64) { return false; }
-  i++; x >>= 1;
-  for (; i < 64; i++)
-  {
-    if (x & 1) { return false; }
-    x >>= 1;
-  }
-  return i == 64;
-}
-
 

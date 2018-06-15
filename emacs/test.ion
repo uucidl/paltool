@@ -1,0 +1,15 @@
+var a = "value";
+const b = 13;
+
+func basic(a : int, b : char) : bool {
+  // a comment
+  puts("hello");
+  if (a > 2) {
+    return false;
+  }
+}
+
+func variables() {
+  a := "hello";
+  b := "world";
+}

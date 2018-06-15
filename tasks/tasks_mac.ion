@@ -1,5 +1,5 @@
 import .dispatch {...}
-import libc { puts, realloc, memset, free }
+import libc { calloc, puts, realloc, memset, free }
 
 var submission_queue : Queue;
 var main_queue : Queue;
@@ -18,7 +18,7 @@ struct Tasks
   cap : usize;
   len : usize;
   keys : uint64*;
-  values : TaskContent*;
+  values : TaskContent**;
 }
 
 func platform_tasks_init() {
@@ -76,7 +76,9 @@ func _add_task_submission_task(opaque_data : void*) {
   #assert(idx < (UINT64_MAX<<4));
   task := Task{ id = (uint64(generation)<<60) + idx };
   registry.keys[idx] = task.id;
-  registry.values[idx] = { data=data.data, fn=data.fn };
+  task_content : TaskContent* = calloc(1, sizeof(TaskContent));
+  *task_content = { data=data.data, fn=data.fn };
+  registry.values[idx] = task_content;
   data.task = task;
 }
 
@@ -101,7 +103,7 @@ func get_content(task : Task) : TaskContent* {
   idx := bits(task.id, 0, 60);
   #assert(idx < registry.len); // invalid handle
   #assert(registry.keys[idx] == task.id); // invalid handle
-  return &registry.values[idx];
+  return registry.values[idx];
 }
 
 func run_task_task(opaque_data : void*) {

@@ -1,0 +1,77 @@
+struct BufHeader
+{
+  capacity : int32;
+  size     : int32;
+  magic    : int64;
+  bytes    : uint8[1];
+}
+
+const BufHeaderMagic = 0x6731;
+
+func buf_hdr(bufptr : void*) : BufHeader*
+{
+  addr := ((:uint8*) bufptr) - offsetof(BufHeader, bytes);
+  hdr := (:BufHeader*) addr;
+  #assert(hdr.magic == BufHeaderMagic);
+  #assert(hdr.capacity >= 0);
+  #assert(hdr.size >= 0);
+  return hdr;  
+}
+
+func buf_free(bufptr : void*)
+{
+  if (!bufptr) {
+    return;
+  }
+
+  hdr := buf_hdr(bufptr);
+  hdr.magic = 0x0000;
+  free(hdr);
+}
+
+func buf_fit(bufptr : void*, elem_size : usize, added : usize) : void*
+{
+  added_size := added*elem_size; // @todo overflow check
+  hdr := bufptr? buf_hdr(bufptr) : NULL;
+  if (!hdr)
+  {  
+	hdr = calloc(1, sizeof(BufHeader) + added_size);
+	*hdr = {
+	     capacity = added_size,
+	     magic = BufHeaderMagic,
+	};
+	return &hdr.bytes[0];
+  }
+  size := added_size + hdr.size;
+  #assert(size < INT32_MAX);
+  #assert(hdr.magic == BufHeaderMagic);
+  need_capacity := size;
+  if (need_capacity > hdr.capacity)
+  {
+    old_capacity := hdr.capacity;
+    next_capacity := 2*old_capacity;
+    new_capacity := need_capacity>next_capacity? need_capacity:next_capacity;
+    hdr = realloc(hdr, sizeof(BufHeader) + new_capacity);
+    memset(&hdr.bytes[old_capacity], 0, new_capacity - old_capacity);
+    hdr.capacity = new_capacity;
+    #assert(hdr.capacity >= size);
+  }
+  return &hdr.bytes[0];
+}
+
+func buf_push(bufptr : void*, data : void const*, data_size : usize)
+{
+  hdr := buf_hdr(bufptr);
+  #assert(hdr.magic == BufHeaderMagic);
+  #assert(data_size < INT32_MAX - hdr.capacity);
+  #assert(data_size <= hdr.capacity - hdr.size);
+  memcpy(&hdr.bytes[hdr.size], data, data_size);
+  hdr.size += data_size;
+}
+
+func buf_len(bufptr : void*, data_size : usize) : usize
+{
+  size := bufptr? buf_hdr(bufptr).size : 0;
+  #assert(size % data_size == 0);
+  return size/data_size;
+}

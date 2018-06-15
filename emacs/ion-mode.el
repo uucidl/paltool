@@ -6,6 +6,9 @@
 ;; @url: https://www.emacswiki.org/emacs/ProgMode
 ;;
 
+;; I'm not sure it's such a good idea to base this mode on CC-mode.
+;; (Despite similarities with C)
+
 (require 'cc-mode)
 
 (eval-when-compile
@@ -17,6 +20,11 @@
   ion (append '("func" "var" "const") (c-lang-const c-modifier-kwds)))
 
 (c-lang-defconst c-cpp-matchers ion nil)
+
+(c-lang-defconst c-recognize-colon-labels ion nil) ;; I want this to be t
+
+(c-lang-defconst c-assignment-operators
+  ion (c-lang-const c-assignment-operators))
 
 (defcustom ion-font-lock-extra-types nil
   "*List of extra types (aside from the type keywords) to recognize in ion mode. Each list item should be a regexp matching a single identifier.")

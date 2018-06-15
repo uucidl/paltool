@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-CFLAGS="-g -O3"
+CFLAGS="-g -O0 -fsanitize=undefined -fsanitize=address"
 
 HERE="$(dirname "${0}")"
 pushd "${HERE}"
