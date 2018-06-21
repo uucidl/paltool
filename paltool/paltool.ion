@@ -5,19 +5,43 @@ import libc { ... }
 import tasks { ... }
 import codecs { ... }
 
-func strbuf_push(bufptr : char**, str : char const*) {
-  n := strlen(str);
-  *bufptr = buf_fit(*bufptr, sizeof(**bufptr), n);
-  buf_push(*bufptr, str, n);
+struct Image
+{
+  num_pixels : usize;
+  pixels : RGB24*;
+  task : Task;
+  task_data : CountHueTask*;
 }
 
-func strbuf_terminate(bufptr : char**) {
-  *bufptr = buf_fit(*bufptr, sizeof(**bufptr), 1);
-  buf_push(*bufptr, "\0", 1);
+func is_ptr_aligned(ptr : void*, alignment : int) : bool
+{
+  return uintptr(ptr) & (alignment - 1) == 0;
+}
+
+func image_from_file(image : Image*, abspath : char*)
+{
+  x : int;
+  y : int;
+  n : int;
+  data := image_load(abspath, &x, &y, &n, 3);
+
+  #assert(is_ptr_aligned(data, alignof(RGB24)));
+  image.pixels = (:RGB24*)data;
+  image.num_pixels = x*y;
+  image.task_data = calloc(1, sizeof(*image.task_data));
+  image.task_data.ipt96_from_rgb24 = allocate_ipt96_from_rgb24(
+    image.num_pixels, image.pixels);
+  image.task_data.count_hue = CountHueTransform{
+    num_pixels = image.num_pixels,
+    inputIPT96 = image.task_data.ipt96_from_rgb24.outputIPT96,
+  };
+  image.task = create_task(count_hue_task, image.task_data);
+  start_task(image.task);
 }
 
 func main(argc: int, argv: char**) : int {
   test_colorspaces();
+  test_ipt96_from_rgb24_transform();
 
   tasks_init();
   path : char*;
@@ -25,8 +49,9 @@ func main(argc: int, argv: char**) : int {
   expect_str(&argi, argc, argv, &path);
   printf("INFO: listing all files from root: %s\n", path);
   paths := find_all_files_recursively((:uint8*)path);
-  tasks : Task*;
-  count_hues : CountHueTransform**;
+
+  source_images : Image*;
+  source_images = buf_fit(source_images, sizeof(source_images[0]), 0);
   while (paths.error == PathListError_None) {
     for (i := 0; i < paths.output.num_dirpaths; i++) {
       printf("[d]\t%s\n", paths.output.dirpaths[i]);
@@ -35,27 +60,18 @@ func main(argc: int, argv: char**) : int {
       file := paths.output.filepaths[i];
       printf("[f]\t%s", file);
       if (str_match_suffix((:char*)file, ".jpg") || str_match_suffix((:char*)file, ".JPG")) {
-        abspath : char*;
-        strbuf_push(&abspath, path);
-        strbuf_push(&abspath, "/");
-        strbuf_push(&abspath, (:char*)file);
-        strbuf_push(&abspath, "\0");
-        strbuf_terminate(&abspath);
-	printf("\t[image/jpeg]");
-        x : int;
-        y : int;
-        n : int;
-        data := image_load(abspath, &x, &y, &n, 3);
+	abspath : char*;
+	strbuf_catf(&abspath, "%s/%s", path, (:char*)file);
+	image : Image;
+	image_from_file(&image, abspath);
+	if (!image.pixels) {
+	  printf("\t[corrupt]");
+	} else {
+	  printf("\t[image/jpeg]");
+	}
+	source_images = buf_fit(source_images, sizeof(source_images[0]), 1);
+	buf_push(source_images, &image, sizeof(image), 1);
 	buf_free(abspath);
-	abspath = NULL;
-	
-        transform : CountHueTransform* = calloc(1, sizeof(CountHueTransform));
-	transform.pixelsRGB24 = data;
-	transform.num_pixels = x*y;
-        task := create_task(count_hue_task, transform);
-	count_hues = buf_fit(count_hues, sizeof(count_hues[0]), 1);
-	buf_push(count_hues, &transform, sizeof(transform));
-	start_task(task);
       }
       printf("\n");
     }
@@ -69,17 +85,19 @@ func main(argc: int, argv: char**) : int {
   num_remaining_tasks := 0;
   do {
     num_remaining_tasks = 0;
-    for (i:=0; i<buf_len(count_hues, sizeof(count_hues[0])); i++) {
-      num_remaining_tasks += count_hues[i].pixelsRGB24? 1 : 0;
+    for (i:=0; i<buf_len(source_images, sizeof(source_images[0])); i++) {
+      num_remaining_tasks += !source_images[i].task_data.done? 1 : 0;
     }
   } while (num_remaining_tasks > 0);
 
   // @todo: merge results, count occurrences per area
-  hue_counts_per_task :  HueCounts* = buf_fit(NULL, buf_len(count_hues, sizeof(count_hues[0])), sizeof(HueCounts));
-  for (i:=0; i<buf_len(count_hues, sizeof(count_hues[0])); i++) {
-      buf_push(hue_counts_per_task, &count_hues[i].result, sizeof(count_hues[i].result));
+  hue_counts_per_task :  HueCounts* = buf_fit(NULL, sizeof(HueCounts), buf_len(source_images, sizeof(source_images[0])));
+  for (i:=0; i<buf_len(source_images, sizeof(source_images[0])); i++) {
+    buf_push(hue_counts_per_task, &source_images[i].task_data.count_hue.result, sizeof(source_images[i].task_data.count_hue.result), 1);
   }
   hue_counts := merge_hue_counts(buf_len(hue_counts_per_task, sizeof(hue_counts_per_task[0])), &hue_counts_per_task[0]);
+  // Report:
+  printf("num_hues: %zu\n", buf_len(hue_counts.hues, sizeof(hue_counts.hues[0])));
   for(hue_i:=0; hue_i<buf_len(hue_counts.hues, sizeof(hue_counts.hues[0])); hue_i++) {
     hue := hue_counts.hues[hue_i];
     if (hue.num == 1) { continue; }
@@ -101,19 +119,48 @@ func main(argc: int, argv: char**) : int {
 //
 // IPTFromRGBTransform > SortBy{PT,I} > CountPT+CountIByPT
 
+struct RGB24
+{
+  r, g, b: uint8;
+}
+
+struct IPT96
+{
+  i, p, t : float;
+}
+
+struct IPT96FromRGB24Transform
+{
+  num_pixels : usize;
+  inputRGB24 : RGB24*;
+  outputIPT96 : IPT96*;
+}
+
+func allocate_ipt96_from_rgb24(num_pixels : usize, input : RGB24*) : IPT96FromRGB24Transform
+{
+  output := calloc(num_pixels, sizeof(IPT96));
+  return { num_pixels = num_pixels, inputRGB24 = input, outputIPT96 = output };
+}
+
+func free_ipt96_from_rgb24(transform : IPT96FromRGB24Transform*)
+{
+  free(transform.outputIPT96);
+  transform.outputIPT96 = NULL;
+}
+
+struct CountHueTransform
+{
+  num_pixels : usize;
+  inputIPT96 : IPT96*;
+  result : HueCounts;
+}
+
 struct HueWithOccurence
 {
   hue_angle : float;
   num : usize;
   ipt : float[3];
   min_ipt : float[3];
-}
-
-struct CountHueTransform
-{
-  num_pixels : usize;
-  pixelsRGB24 : uint8*;
-  result : HueCounts;
 }
 
 struct HueCounts
@@ -130,7 +177,7 @@ func bits_float(x : float) : uint32
   memcpy(&y, &x, sizeof(y));
   return y;
 }
-  
+
 func count_hue_hue_key(hue_angle : float) : uint64
 {
   return 0xf | (bits_float(hue_angle)<<4);
@@ -144,7 +191,7 @@ func record_raw_hue(count : HueCounts*, hue_elem : HueWithOccurence)
   {
     hue_idx_plus_one = buf_len(count.hues, sizeof(count.hues[0])) + 1;
     count.hues = buf_fit(count.hues, sizeof(count.hues[0]), 1);
-    buf_push(count.hues, &hue_elem, sizeof(hue_elem));
+    buf_push(count.hues, &hue_elem, sizeof(hue_elem), 1);
     map_put(&count.hue_occurences, hue_key, (:void*)hue_idx_plus_one);
   }
   else
@@ -166,38 +213,24 @@ func record_raw_hue(count : HueCounts*, hue_elem : HueWithOccurence)
 
 // @todo window colors to not over represent highs and lows
 
-func record_pixel_hue(count : HueCounts*, srgb : float[3])
+struct CountHueTask
 {
-  count.num_pixels++;
-  xyz : float[3];
-  xyz_from_srgb(1, xyz, 3, srgb, 3);
-  ipt : float[3];
-  ipt_from_xyz(1, ipt, 3, xyz, 3);
-  hue_angle := atan2(ipt[1], ipt[2]);
-  // @todo pass as parameter
-  quantized_hue_angle := round(3000.0*hue_angle)/3000.0;
-  record_raw_hue(count, {
-        hue_angle = quantized_hue_angle,
-        num = 1,
-        ipt = { ipt[0], ipt[1], ipt[2] },
-        min_ipt = { ipt[0], ipt[1], ipt[2] },
-  });
+  done : bool;
+  ipt96_from_rgb24 : IPT96FromRGB24Transform;
+  count_hue : CountHueTransform;
 }
 
 func count_hue_task(opaque_data : void*)
 {
-  transform : CountHueTransform* = opaque_data;
-  transform.result.hues = buf_fit(transform.result.hues, sizeof(transform.result.hues[0]), transform.num_pixels/4);
-  {
-    src := transform.pixelsRGB24;
-    for (i:=0; i<transform.num_pixels; i++) {
-      srgb : float[3] = { src[0]/255.0, src[1]/255.0, src[2]/255.0 };
-      record_pixel_hue(&transform.result, srgb);
-      src += 3;
-    }
-  }
-  image_free(transform.pixelsRGB24); // @todo move outside to dependent task
-  transform.pixelsRGB24 = NULL;
+  task : CountHueTask* = opaque_data;
+  run_ipt96_from_rgb24(&task.ipt96_from_rgb24);
+  run_count_hues(&task.count_hue);
+  // @todo should deallocation be inside the task?
+  free_ipt96_from_rgb24(&task.ipt96_from_rgb24);
+
+  image_free((:uint8*)task.ipt96_from_rgb24.inputRGB24); // @todo move outside to dependent task
+  task.ipt96_from_rgb24.inputRGB24 = NULL;
+  task.done = true;
 }
 
 func merge_hue_counts(num_counts : usize, counts : HueCounts*) : HueCounts
@@ -207,11 +240,92 @@ func merge_hue_counts(num_counts : usize, counts : HueCounts*) : HueCounts
   for (count_i:=0; count_i<num_counts; count_i++) {
       count := counts[count_i];
       for (hue_i:=0; hue_i<buf_len(count.hues, sizeof(counts.hues[0])); hue_i++) {
-          hue := count.hues[hue_i];
-          record_raw_hue(&result, hue);
-          result.num_pixels += count.num_pixels;
+	  hue := count.hues[hue_i];
+	  record_raw_hue(&result, hue);
+	  result.num_pixels += count.num_pixels;
       }
   }
   return result;
 }
 
+func clamp_float(x : float, min : float, max : float) : float
+{
+  return x < min? min : (x > max? max : x);
+}
+
+
+func run_ipt96_from_rgb24(transform : IPT96FromRGB24Transform*)
+{
+  num_pixels := transform.num_pixels;
+  buffer1 : float* = calloc(num_pixels*3, sizeof(float));
+  buffer2 : float* = calloc(num_pixels*3, sizeof(float));
+  for (i:=0; i<num_pixels; i++) {
+    buffer1[3*i+0] = float(transform.inputRGB24[i].r)/255.0;
+    buffer1[3*i+1] = float(transform.inputRGB24[i].g)/255.0;
+    buffer1[3*i+2] = float(transform.inputRGB24[i].b)/255.0;
+  }
+  xyz_from_srgb(transform.num_pixels, buffer2, 3, buffer1 , 3);
+  ipt_from_xyz(transform.num_pixels, buffer1, 3, buffer2, 3);
+  for (i:=0; i<num_pixels; i++) {
+    transform.outputIPT96[i].i = buffer1[3*i+0];
+    transform.outputIPT96[i].p = buffer1[3*i+1];
+    transform.outputIPT96[i].t = buffer1[3*i+2];
+  }
+  free(buffer1);
+  free(buffer2);
+}
+
+func run_count_hues(transform : CountHueTransform*)
+{
+  transform.result.hues = buf_fit(
+    transform.result.hues,
+    sizeof(transform.result.hues[0]),
+    transform.num_pixels/4);
+
+  src := transform.inputIPT96;
+  for (i:=0; i<transform.num_pixels; i++) {
+    ipt : float[3] = { src[i].i, src[i].p, src[i].t };
+    hue_angle := atan2(ipt[1], ipt[2]);
+    // @todo pass as parameter
+    quantized_hue_angle := round(3000.0*hue_angle)/3000.0;
+    record_raw_hue(&transform.result, {
+	hue_angle = quantized_hue_angle,
+	num = 1,
+	ipt = { ipt[0], ipt[1], ipt[2] },
+	min_ipt = { ipt[0], ipt[1], ipt[2] },
+    });
+  }
+}
+
+func test_ipt96_from_rgb24_transform()
+{
+  rgb : RGB24[3] = {
+    { r=0xff },
+    { g=0xff },
+    { b=0xff },
+  };
+  ipt : IPT96[3];
+  transform := IPT96FromRGB24Transform{
+    num_pixels = 3,
+    inputRGB24 = rgb,
+    outputIPT96 = ipt,
+  };
+  run_ipt96_from_rgb24(&transform);
+  for (i:=0; i<3; i++) {
+    fipt : float[3] = {
+      ipt[i].i,
+      ipt[i].p,
+      ipt[i].t,
+    };
+    rrgb : float[3];
+    txyz : float[3];
+    xyz_from_ipt(1, txyz, 3, fipt, 3);
+    srgb_from_xyz(1, rrgb, 3, txyz, 3);
+    frgb : float[3] = {
+      rgb[i].r/255.0,
+      rgb[i].g/255.0,
+      rgb[i].b/255.0,
+    };
+    #assert(almost_equal_3x(frgb, rrgb, 2.0/255.0));
+  }
+}

@@ -110,10 +110,10 @@ func platform_next_paths(generator : PathListGenerator*)
     entry := unpack_query_result(next_entry, remaining_num_bytes);
     if (entry.objtype == VREG) {
        generator.output.filepaths = buf_fit(generator.output.filepaths, sizeof(entry.name), 1);
-       buf_push(generator.output.filepaths, &entry.name, sizeof(entry.name));
+       buf_push(generator.output.filepaths, &entry.name, sizeof(entry.name), 1);
     } else {
        generator.output.dirpaths = buf_fit(generator.output.dirpaths, sizeof(entry.name), 1);
-       buf_push(generator.output.dirpaths, &entry.name, sizeof(entry.name));
+       buf_push(generator.output.dirpaths, &entry.name, sizeof(entry.name), 1);
     }
     next_entry += entry.size;
   }
