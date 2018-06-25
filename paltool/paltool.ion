@@ -42,6 +42,7 @@ func image_from_file(image : Image*, abspath : char*)
 func main(argc: int, argv: char**) : int {
   test_colorspaces();
   test_ipt96_from_rgb24_transform();
+  test_pack_pt();
 
   tasks_init();
   path : char*;
@@ -129,6 +130,11 @@ struct IPT96
   i, p, t : float;
 }
 
+func ipt96_isequal(a : IPT96, b: IPT96) : bool
+{
+  return a.i == b.i && a.p == b.p && a.t == b.t;
+}
+  
 struct IPT96FromRGB24Transform
 {
   num_pixels : usize;
@@ -160,7 +166,6 @@ struct HueWithOccurence
   hue_angle : float;
   num : usize;
   ipt : float[3];
-  min_ipt : float[3];
 }
 
 struct HueCounts
@@ -203,13 +208,73 @@ func record_raw_hue(count : HueCounts*, hue_elem : HueWithOccurence)
       d_hue.ipt[1] = hue_elem.ipt[1];
       d_hue.ipt[2] = hue_elem.ipt[2];
     }
-    if (hue_elem.min_ipt[0] < d_hue.min_ipt[0]) {
-      d_hue.min_ipt[0] = hue_elem.min_ipt[0];
-      d_hue.min_ipt[1] = hue_elem.min_ipt[1];
-      d_hue.min_ipt[2] = hue_elem.min_ipt[2];
-    }
   }
 }
+
+
+struct FooTransform
+{
+  num_pixels : usize;
+  inputIPT96 : IPT96*;
+  num_bits : int;
+  packed_hues_buf : uint32*;
+}
+
+func pack_pt(ipt : IPT96, num_bits : int) : uint32
+{
+  one_as_int := 1<<(num_bits-1);
+  positive_max := one_as_int - 1;
+  one := float(positive_max);
+  p_as_int := uint32(ipt.p * one);
+  t_as_int := uint32(ipt.t * one);
+  return
+    (bits(p_as_int<<(32-num_bits),32-num_bits,num_bits)<<num_bits)
+    | bits(t_as_int<<(32-num_bits), 32-num_bits, num_bits);
+}
+
+func unpack_pt(packed : uint32, num_bits : int) : IPT96
+{
+  one_as_int := 1<<(num_bits - 1);
+  positive_max := one_as_int - 1;
+  one := float(positive_max);
+  p_as_int : int32 = sign_extend(bits(packed, num_bits, num_bits), num_bits);
+  t_as_int : int32 = sign_extend(bits(packed, 0, num_bits), num_bits);
+  return { p=p_as_int/one, t=t_as_int/one };
+}
+
+func test_pack_pt()
+{
+  bit_sizes : int[] = { 8, 9, 10 };
+  num_bit_sizes := sizeof(bit_sizes)/sizeof(bit_sizes[0]); // @todo I wish I had countof
+  for (i:=0; i<num_bit_sizes; i++) {
+    num_bits := bit_sizes[i];
+    y := pack_pt({t=1.0}, num_bits);
+    pt := unpack_pt(y, num_bits);
+#assert(ipt96_isequal(pt, {t = 1.0}));
+    
+    y = pack_pt({t=-1.0}, num_bits);
+    pt = unpack_pt(y, num_bits);
+#assert(ipt96_isequal(pt, {t = -1.0}));
+    
+    y = pack_pt({p=1.0}, num_bits);
+    pt = unpack_pt(y, num_bits);
+#assert(ipt96_isequal(pt, {p=1.0}));
+    
+    y = pack_pt({p=-1.0}, num_bits);
+    pt = unpack_pt(y, num_bits);
+#assert(ipt96_isequal(pt, {p=-1.0}));
+  }
+}
+  
+func run_foo(foo : FooTransform*)
+{
+  #assert(foo.num_bits > 0 && 2*foo.num_bits <= 30);
+  foo.packed_hues_buf = buf_fit(foo.packed_hues_buf, sizeof(foo.packed_hues_buf[0]), foo.num_pixels);
+  for (i:=0; i<foo.num_pixels; i++) {
+    foo.packed_hues_buf[i] = pack_pt(foo.inputIPT96[i], foo.num_bits);
+  }
+}
+
 
 // @todo window colors to not over represent highs and lows
 
@@ -218,6 +283,7 @@ struct CountHueTask
   done : bool;
   ipt96_from_rgb24 : IPT96FromRGB24Transform;
   count_hue : CountHueTransform;
+  foo : FooTransform;
 }
 
 func count_hue_task(opaque_data : void*)
@@ -225,6 +291,12 @@ func count_hue_task(opaque_data : void*)
   task : CountHueTask* = opaque_data;
   run_ipt96_from_rgb24(&task.ipt96_from_rgb24);
   run_count_hues(&task.count_hue);
+
+  task.foo.num_pixels = task.ipt96_from_rgb24.num_pixels;
+  task.foo.inputIPT96 = task.ipt96_from_rgb24.outputIPT96;
+  task.foo.num_bits = 8;
+  run_foo(&task.foo);
+  
   // @todo should deallocation be inside the task?
   free_ipt96_from_rgb24(&task.ipt96_from_rgb24);
 
@@ -292,7 +364,6 @@ func run_count_hues(transform : CountHueTransform*)
 	hue_angle = quantized_hue_angle,
 	num = 1,
 	ipt = { ipt[0], ipt[1], ipt[2] },
-	min_ipt = { ipt[0], ipt[1], ipt[2] },
     });
   }
 }
