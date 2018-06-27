@@ -1,4 +1,4 @@
-import .bsd { ... }
+import bsd { ... }
 import libc { calloc, free, memcpy, memset, printf, realloc }
 
 struct PlatformPathListGenerator
