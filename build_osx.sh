@@ -4,7 +4,7 @@ CFLAGS="${CFLAGS}"
 
 HERE="$(dirname "${0}")"
 pushd "${HERE}"
-ion paltool
+ion -os osx -arch x64 paltool
 popd
 
 O="${HERE}/paltool.elf"
