@@ -161,6 +161,17 @@ func xyz_from_ipt(n : usize, xyz : float*, xyz_stride : usize, ipt : float const
   }
 }
 
+func srgb_from_ipt(n : usize, srgb : float*, srgb_stride : usize, ipt: float const*, ipt_stride : usize)
+{
+  for (i:=0; i<n; i++) {
+    xyz : float[3];
+    xyz_from_ipt(1, xyz, 3, ipt, 3);
+    srgb_from_xyz(1, srgb, 3, xyz, 3);
+    ipt += ipt_stride;
+    srgb += srgb_stride;
+  }
+}
+
 func test_colorspaces()
 {
   // @todo check colorspace coverage, in particular extremas from ipt/xyz/srgb
