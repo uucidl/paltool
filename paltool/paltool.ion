@@ -96,13 +96,12 @@ func main(argc: int, argv: char**) : int {
   for (image_idx:=0; image_idx<buf_len(source_images, sizeof(source_images[0])); image_idx++) {
     task := source_images[image_idx].task_data;
     buf_push(hue_counts_per_task, &task.count_hue.result, sizeof(task.count_hue.result), 1);
-    for (i:=0; i<task.foo.hue_counts.len; i++) {
-      if (!task.foo.hue_counts.keys[i]) { continue; }
-      counts : FooHueCount* = task.foo.hue_counts.ptrs[i];
+    for (i:=0; i<task.foo.hue_counts_map.len; i++) {
+      if (!task.foo.hue_counts_map.keys[i]) { continue; }
+      counts : FooHueCount const* = &task.foo.hue_counts[intptr(task.foo.hue_counts_map.ptrs[i])];
       srgb : float[3];
-      ipt : float[3] = { 1.0, counts.p, counts.t };
+      ipt : float[3] = { counts.i_max, counts.p, counts.t };
       srgb_from_ipt(1, srgb, 3, ipt, 3);
-      scale_3x(1, srgb, 3, 1.0/max_3x(1, srgb, 3));
       printf("foo\t%zu\t%f %f\t#%02x %02x %02x\n", counts.n, counts.p, counts.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
     }
   }
@@ -282,13 +281,17 @@ struct FooTransform
   inputIPT96 : IPT96*;
   num_bits : int;
   packed_hues_buf : uint32*;
-  hue_counts : Map;
+  hue_counts_map : Map;
+  hue_counts : FooHueCount*;
 }
 
 struct FooHueCount
 {
+  key : uint32;
   p, t : float;
   n : usize;
+  i_min : float;
+  i_max : float;
 }
 
 func foo_hue_counts_key(packed_hue : uint32) : uint64
@@ -300,22 +303,37 @@ func run_foo(foo : FooTransform*)
 {
   #assert(foo.num_bits > 0 && 2*foo.num_bits <= 30);
   foo.packed_hues_buf = buf_fit(foo.packed_hues_buf, sizeof(foo.packed_hues_buf[0]), foo.num_pixels);
+  foo.hue_counts = buf_fit(foo.hue_counts, sizeof(foo.hue_counts[0]), 1); // reserve null entry
   for (i:=0; i<foo.num_pixels; i++) {
     packed_hue := pack_pt(foo.inputIPT96[i], foo.num_bits);
     foo.packed_hues_buf[i] = packed_hue;
     hue_key := foo_hue_counts_key(packed_hue);
-    count_ptr := map_get(&foo.hue_counts, hue_key);
-    count : FooHueCount* = count_ptr? count_ptr : calloc(1, sizeof(FooHueCount));
-    if (!count_ptr) {
+    count_idx := intptr(map_get(&foo.hue_counts_map, hue_key));
+    if (!count_idx) {
+      count_idx = buf_len(foo.hue_counts, sizeof(foo.hue_counts[0]));
+      foo.hue_counts = buf_fit(foo.hue_counts, sizeof(foo.hue_counts[0]), 1);
       qhue := unpack_pt(packed_hue, foo.num_bits);
-      count.p = qhue.p;
-      count.t = qhue.t;
+      buf_push(foo.hue_counts, &FooHueCount{
+        key = packed_hue,
+        p = qhue.p,
+        t = qhue.t,
+        i_min = 1.0,
+        i_max = 0.0
+      }, sizeof(FooHueCount), 1);
+      map_put(&foo.hue_counts_map, hue_key, (:void*)count_idx);
+    }
+    count : FooHueCount* = &foo.hue_counts[count_idx];
+    #assert(count.key == packed_hue);
+    intensity := foo.inputIPT96[i].i;
+    if (intensity < count.i_min) { 
+      count.i_min = intensity;
+    }
+    if (intensity > count.i_max) {
+      count.i_max = intensity;
     }
     count.n++;
-    map_put(&foo.hue_counts, hue_key, count);
   }
 }
-
 
 // @todo window colors to not over represent highs and lows
 
