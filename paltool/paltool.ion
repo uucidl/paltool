@@ -5,40 +5,6 @@ import libc { ... }
 import tasks { ... }
 import codecs { ... }
 
-struct Image
-{
-  num_pixels : usize;
-  pixels : RGB24*;
-  task : Task;
-  task_data : CountHueTask*;
-}
-
-func is_ptr_aligned(ptr : void*, alignment : int) : bool
-{
-  return uintptr(ptr) & (alignment - 1) == 0;
-}
-
-func image_from_file(image : Image*, abspath : char*)
-{
-  x : int;
-  y : int;
-  n : int;
-  data := image_load(abspath, &x, &y, &n, 3);
-
-  #assert(is_ptr_aligned(data, alignof(RGB24)));
-  image.pixels = (:RGB24*)data;
-  image.num_pixels = x*y;
-  image.task_data = calloc(1, sizeof(*image.task_data));
-  image.task_data.ipt96_from_rgb24 = allocate_ipt96_from_rgb24(
-    image.num_pixels, image.pixels);
-  image.task_data.count_hue = CountHueTransform{
-    num_pixels = image.num_pixels,
-    inputIPT96 = image.task_data.ipt96_from_rgb24.outputIPT96,
-  };
-  image.task = create_task(count_hue_task, image.task_data);
-  start_task(image.task);
-}
-
 func main(argc: int, argv: char**) : int {
   test_colorspaces();
   test_ipt96_from_rgb24_transform();
@@ -51,7 +17,7 @@ func main(argc: int, argv: char**) : int {
   printf("INFO: listing all files from root: %s\n", path);
   paths := find_all_files_recursively((:uint8*)path);
 
-  source_images : Image*;
+  source_images : ImageTasks*;
   source_images = buf_fit(source_images, sizeof(source_images[0]), 0);
   while (paths.error == PathListError_None) {
     for (i := 0; i < paths.output.num_dirpaths; i++) {
@@ -63,9 +29,9 @@ func main(argc: int, argv: char**) : int {
       if (str_match_suffix((:char*)file, ".jpg") || str_match_suffix((:char*)file, ".JPG")) {
 	abspath : char*;
 	strbuf_catf(&abspath, "%s/%s", path, (:char*)file);
-	image : Image;
+	image : ImageTasks;
 	image_from_file(&image, abspath);
-	if (!image.pixels) {
+	if (!image.image.interleaved_channels) {
 	  printf("\t[corrupt]");
 	} else {
 	  printf("\t[image/jpeg]");
@@ -337,7 +303,29 @@ func run_foo(foo : FooTransform*)
 
 // @todo window colors to not over represent highs and lows
 
-struct CountHueTask
+struct ImageTasks
+{
+  image : Image;
+  task : Task;
+  task_data : ImageTaskData*;
+}
+
+func image_from_file(tasks : ImageTasks*, abspath : char*)
+{
+  tasks.image = image_load(abspath, 3);
+  num_pixels := tasks.image.width*tasks.image.height;
+  ipt96_from_rgb24 := allocate_ipt96_from_rgb24(num_pixels, (:RGB24*)tasks.image.interleaved_channels);
+  tasks.task_data = calloc(1, sizeof(*tasks.task_data));
+  *tasks.task_data = {
+    ipt96_from_rgb24 = ipt96_from_rgb24,
+    count_hue = { num_pixels = num_pixels, inputIPT96 = ipt96_from_rgb24.outputIPT96, },
+  };
+  tasks.task = create_task(image_task, tasks.task_data);
+  start_task(tasks.task);
+  // create dependent memory deallocation tasks
+}
+
+struct ImageTaskData
 {
   done : bool;
   ipt96_from_rgb24 : IPT96FromRGB24Transform;
@@ -345,9 +333,9 @@ struct CountHueTask
   foo : FooTransform;
 }
 
-func count_hue_task(opaque_data : void*)
+func image_task(opaque_data : void*)
 {
-  task : CountHueTask* = opaque_data;
+  task : ImageTaskData* = opaque_data;
   run_ipt96_from_rgb24(&task.ipt96_from_rgb24);
   run_count_hues(&task.count_hue);
 
@@ -358,8 +346,8 @@ func count_hue_task(opaque_data : void*)
   
   // @todo should deallocation be inside the task?
   free_ipt96_from_rgb24(&task.ipt96_from_rgb24);
+  stbi_image_free((:uint8*)task.ipt96_from_rgb24.inputRGB24); // @todo move outside to dependent task
 
-  image_free((:uint8*)task.ipt96_from_rgb24.inputRGB24); // @todo move outside to dependent task
   task.ipt96_from_rgb24.inputRGB24 = NULL;
   task.done = true;
 }

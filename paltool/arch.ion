@@ -1,0 +1,5 @@
+func is_ptr_aligned(ptr : void*, alignment : int) : bool
+{
+  return uintptr(ptr) & (alignment - 1) == 0;
+}
+
