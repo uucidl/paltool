@@ -109,16 +109,14 @@ func platform_next_paths(generator : PathListGenerator*)
   remaining_num_bytes := (:uint8*)&generator.resources.batch_mem[sizeof(generator.resources.batch_mem)/sizeof(generator.resources.batch_mem[0])] - next_entry;
     entry := unpack_query_result(next_entry, remaining_num_bytes);
     if (entry.objtype == VREG) {
-       generator.output.filepaths = buf_fit(generator.output.filepaths, sizeof(entry.name), 1);
-       buf_push(generator.output.filepaths, &entry.name, sizeof(entry.name), 1);
+       buf_push(&generator.output.filepaths, &entry.name, sizeof(entry.name));
     } else {
-       generator.output.dirpaths = buf_fit(generator.output.dirpaths, sizeof(entry.name), 1);
-       buf_push(generator.output.dirpaths, &entry.name, sizeof(entry.name), 1);
+       buf_push(&generator.output.dirpaths, &entry.name, sizeof(entry.name));
     }
     next_entry += entry.size;
   }
-  generator.output.num_filepaths = buf_len(generator.output.filepaths, sizeof(generator.output.filepaths[0]));
-  generator.output.num_dirpaths = buf_len(generator.output.dirpaths, sizeof(generator.output.filepaths[0]));
+  generator.output.num_filepaths = buf_len(generator.output.filepaths);
+  generator.output.num_dirpaths = buf_len(generator.output.dirpaths);
 }
 
 func platform_free_generator(generator : PathListGenerator*)

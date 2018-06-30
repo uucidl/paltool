@@ -1,31 +1,48 @@
 func strbuf_push(bufptr : char**, str : char const*) {
   n := strlen(str);
   *bufptr = buf_fit(*bufptr, sizeof(**bufptr), n);
-  buf_push(*bufptr, str, 1, n);
+  buf := *bufptr;
+  memcpy(&buf[buf_len(buf)], str, sizeof(char)*n);
 }
 
 func strbuf_terminate(bufptr : char**) {
-  *bufptr = buf_fit(*bufptr, sizeof(**bufptr), 1);
-  buf_push(*bufptr, "\0", 1, 1);
+  buf_push(bufptr, "\0", 1);
 }
 
-func strbuf_end(bufptr : char**) : char* {
-  return *bufptr + buf_len(*bufptr, sizeof(char));
+func strbuf_end(bufptr : char**) : char*
+{
+  return *bufptr + buf_len(*bufptr);
 }
 
-func strbuf_catf(bufptr : char**, fmt : char const*, ...) {
+func strbuf_vcatf(bufptr : char**, fmt : char const*, input_args : va_list)
+{
   args : va_list;
-  va_start(&args, fmt);
-  cap := buf_cap(*bufptr) - buf_len(*bufptr, sizeof(char));
+  va_copy(&args, &input_args);
+  cap := buf_cap(*bufptr) - buf_len(*bufptr);
   n := 1 + vsnprintf(strbuf_end(bufptr), cap, fmt, args);
   va_end(&args);
   if (n > cap) {
     *bufptr = buf_fit(*bufptr, sizeof(char), n);
-    va_start(&args, fmt);
-    new_cap := buf_cap(*bufptr) - buf_len(*bufptr, sizeof(char));
+    va_copy(&args, &input_args);
+    new_cap := buf_cap(*bufptr) - buf_len(*bufptr);
     n = 1 + vsnprintf(strbuf_end(bufptr), new_cap, fmt, args);
     #assert(n <= new_cap);
     va_end(&args);
   }
   buf_hdr(*bufptr).size += sizeof(char)*(n - 1);
+}
+func strbuf_catf(bufptr : char**, fmt : char const*, ...) {
+  args : va_list;
+  va_start(&args, fmt);
+  strbuf_vcatf(bufptr, fmt, args);
+  va_end(&args);
+}
+
+func strbuf(fmt : char const*, ...) : char* {
+  result : char*;
+  args : va_list;
+  va_start(&args, fmt);
+  strbuf_vcatf(&result, fmt, args);
+  va_end(&args);
+  return result;
 }

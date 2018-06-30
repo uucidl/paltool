@@ -18,6 +18,8 @@ func create_task(fn : TaskFunc, data : void*) : Task {
   return platform_create_task(fn, data);
 }
 
+// @todo delete task before it has the opportunity to run?
+
 // Mark a dependency between two tasks
 func task_depends_on(task : Task, dependency : Task) {
   return platform_task_depends_on(task, dependency);

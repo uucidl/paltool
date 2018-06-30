@@ -8,9 +8,9 @@ struct BufHeader
 
 const BufHeaderMagic = 0x6731;
 
-func buf_hdr(bufptr : void*) : BufHeader*
+func buf_hdr(opaque_buf : void*) : BufHeader*
 {
-  addr := ((:uint8*) bufptr) - offsetof(BufHeader, bytes);
+  addr := ((:uint8*) opaque_buf) - offsetof(BufHeader, bytes);
   hdr := (:BufHeader*) addr;
   #assert(hdr.magic & 0xffff == BufHeaderMagic);
   #assert(hdr.capacity >= 0);
@@ -18,21 +18,26 @@ func buf_hdr(bufptr : void*) : BufHeader*
   return hdr;  
 }
 
-func buf_free(bufptr : void*)
+func buf_free(opaque_buf : void*)
 {
-  if (!bufptr) {
+  if (!opaque_buf) {
     return;
   }
 
-  hdr := buf_hdr(bufptr);
+  hdr := buf_hdr(opaque_buf);
   hdr.magic = 0x0000;
   free(hdr);
+}
+
+func buf_hdr_elem_size(hdr : BufHeader*) : usize
+{
+  return buf_bits(hdr.magic, 16, 48);
 }
 
 func buf_check_elem_size(hdr : BufHeader*, elem_size : usize)
 {
   #assert(elem_size < uint64(1)<<48);
-  hdr_elem_size := buf_bits(hdr.magic, 16, 48);
+  hdr_elem_size := buf_hdr_elem_size(hdr);
   if(hdr_elem_size == 0) {
     hdr_elem_size = elem_size;
     hdr.magic |= hdr_elem_size<<16;
@@ -40,10 +45,10 @@ func buf_check_elem_size(hdr : BufHeader*, elem_size : usize)
   #assert(hdr_elem_size == elem_size);
 }
 
-func buf_fit(bufptr : void*, elem_size : usize, num_added : usize) : void*
+func buf_fit(opaque_buf : void*, elem_size : usize, num_added : usize) : void*
 {
   added_size := num_added*elem_size; // @todo overflow check
-  hdr := bufptr? buf_hdr(bufptr) : NULL;
+  hdr := opaque_buf? buf_hdr(opaque_buf) : NULL;
   if (!hdr)
   {  
 	hdr = calloc(1, sizeof(BufHeader) + added_size);
@@ -72,30 +77,37 @@ func buf_fit(bufptr : void*, elem_size : usize, num_added : usize) : void*
   return &hdr.bytes[0];
 }
 
-func buf_push(bufptr : void*, data : void const*, elem_size : usize, num_added : usize)
+func buf__add_n(opaque_buf : void*, data : void const*, elem_size : usize, num_added : usize)
 {
-  hdr := buf_hdr(bufptr);
+  hdr := buf_hdr(opaque_buf);
   #assert(buf_bits(hdr.magic, 0, 16) == BufHeaderMagic);
   buf_check_elem_size(hdr, elem_size);
   // @todo overflow check
-  data_size := elem_size * num_added;
+  data_size := num_added * elem_size;
   #assert(data_size < INT32_MAX - hdr.capacity);
   #assert(data_size <= hdr.capacity - hdr.size);
   memcpy(&hdr.bytes[hdr.size], data, data_size);
-  hdr.size += data_size;
+  hdr.size += elem_size;
 }
 
-func buf_cap(bufptr : void*) : usize
+func buf_push(opaque_buf_ptr : void*, elem : void*, elem_size : usize)
 {
-  cap := bufptr? buf_hdr(bufptr).capacity : 0;
+  buf_ptr := (:void**)opaque_buf_ptr;
+  *buf_ptr = buf_fit(*buf_ptr, elem_size, 1);
+  buf__add_n(*buf_ptr, elem, elem_size, 1);
+}
+
+func buf_cap(opaque_buf : void*) : usize
+{
+  cap := opaque_buf? buf_hdr(opaque_buf).capacity : 0;
   return cap;
 }
 
-func buf_len(bufptr : void*, elem_size : usize) : usize
+func buf_len(opaque_buf : void*) : usize
 {
-  size := bufptr? buf_hdr(bufptr).size : 0;
-  #assert(size % elem_size == 0);
-  return size/elem_size;
+  if (!opaque_buf) { return 0; }
+  hdr := buf_hdr(opaque_buf);
+  return hdr.size/buf_hdr_elem_size(hdr);
 }
 
 func buf_bits(x : uint64, start : int, len : int) : uint64 {
