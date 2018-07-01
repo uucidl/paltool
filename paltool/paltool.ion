@@ -76,21 +76,19 @@ func main(argc: int, argv: char**) : int
 
   // @todo: merge results, count occurrences per area
   hue_counts : HueCounts;
+  foo_counts : FooHueCount*;
+  foo_num_bits : int;
   {
     occurence_map : Map;
+    foo_index : Map;
     for (image_idx:=0; image_idx<buf_len(image_tasks); image_idx++) {
       task := image_tasks[image_idx].task_data;
       merge_hue_counts(&occurence_map, &hue_counts, &task.count_hue.result);
-      for (i:=0; i<buf_len(task.foo.hue_counts); i++) {
-        counts : FooHueCount const* = &task.foo.hue_counts[i];
-        hue := unpack_pt(counts.packed_hue, task.foo.num_bits);
-        srgb : float[3];
-        ipt : float[3] = { counts.i_max, hue.p, hue.t };
-        srgb_from_ipt(1, srgb, 3, ipt, 3);
-        printf("foo\t%zu\t%f %f\t#%02x %02x %02x\n", counts.n, hue.p, hue.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
-      }
+      foo_num_bits = task.foo.num_bits;
+      foo_merge_hue_counts(&foo_index, &foo_counts, &task.foo.hue_counts[0], buf_len(task.foo.hue_counts));
     }
     map_free(&occurence_map);
+    map_free(&foo_index);
   }
   for (i := 0; i < buf_len(image_tasks); i++) { image_task_free(&image_tasks[i]); }
   
@@ -102,6 +100,15 @@ func main(argc: int, argv: char**) : int
     srgb : float[3];
     srgb_from_ipt(1, srgb, 3, hue.ipt, 3);
     printf("%zu\t%f\t#%02x %02x %02x\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+  }
+  for (i:=0; i<buf_len(foo_counts); i++) {
+    counts : FooHueCount const* = &foo_counts[i];
+    if (counts.n == 1) { continue; }
+    hue := unpack_pt(counts.packed_hue, foo_num_bits);
+    srgb : float[3];
+    ipt : float[3] = { counts.i_max, hue.p, hue.t };
+    srgb_from_ipt(1, srgb, 3, ipt, 3);
+    printf("foo\t%zu\t%f %f\t#%02x %02x %02x\n", counts.n, hue.p, hue.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
   }
 
   tasks_deinit();
@@ -337,7 +344,8 @@ func run_foo(foo : FooTransform*)
       {
         packed_hue=packed_hue,
         i_min=intensity, 
-        i_max=intensity
+        i_max=intensity,
+        n=1,
       });
   }
   map_free(&hue_counts_map);
@@ -479,39 +487,5 @@ func test_ipt96_from_rgb24_transform()
       rgb[i].b/255.0,
     };
     #assert(almost_equal_3x(frgb, rrgb, 2.0/255.0));
-  }
-}
-
-func normalize_or_zero_3x(n : usize, v : float*, v_stride : usize)
-{
-  for (i:=0;i<n;i++) {
-    sqnorm := v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
-    s := sqnorm <= 0.0? 0.0 : 1.0/sqrt(sqnorm);
-    v[0] *= s;
-    v[1] *= s;
-    v[2] *= s;
-    v += v_stride;
-  }
-}
-
-func max_3x(n : usize, v : float*, v_stride : usize) : float
-{
-  max : float = INT_MIN;
-  for (i:=0; i<n; i++) {
-    max = v[0]>max? v[0]:max;
-    max = v[1]>max? v[1]:max;
-    max = v[2]>max? v[2]:max;
-    v += v_stride;
-  }
-  return max;
-}
-
-func scale_3x(n : usize, v : float*, v_stride : usize, s : float)
-{
-  for (i:=0; i<n; i++) {
-    v[0] *= s;
-    v[1] *= s;
-    v[2] *= s;
-    v += v_stride;
   }
 }
