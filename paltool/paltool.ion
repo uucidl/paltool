@@ -76,16 +76,21 @@ func main(argc: int, argv: char**) : int
 
   // @todo: merge results, count occurrences per area
   hue_counts : HueCounts;
-  for (image_idx:=0; image_idx<buf_len(image_tasks); image_idx++) {
-    task := image_tasks[image_idx].task_data;
-    merge_hue_counts(&hue_counts, &task.count_hue.result);
-    for (i:=0; i<buf_len(task.foo.hue_counts); i++) {
-      counts : FooHueCount const* = &task.foo.hue_counts[i];
-      srgb : float[3];
-      ipt : float[3] = { counts.i_max, counts.p, counts.t };
-      srgb_from_ipt(1, srgb, 3, ipt, 3);
-      printf("foo\t%zu\t%f %f\t#%02x %02x %02x\n", counts.n, counts.p, counts.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+  {
+    occurence_map : Map;
+    for (image_idx:=0; image_idx<buf_len(image_tasks); image_idx++) {
+      task := image_tasks[image_idx].task_data;
+      merge_hue_counts(&occurence_map, &hue_counts, &task.count_hue.result);
+      for (i:=0; i<buf_len(task.foo.hue_counts); i++) {
+        counts : FooHueCount const* = &task.foo.hue_counts[i];
+        hue := unpack_pt(counts.packed_hue, task.foo.num_bits);
+        srgb : float[3];
+        ipt : float[3] = { counts.i_max, hue.p, hue.t };
+        srgb_from_ipt(1, srgb, 3, ipt, 3);
+        printf("foo\t%zu\t%f %f\t#%02x %02x %02x\n", counts.n, hue.p, hue.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+      }
     }
+    map_free(&occurence_map);
   }
   for (i := 0; i < buf_len(image_tasks); i++) { image_task_free(&image_tasks[i]); }
   
@@ -200,15 +205,13 @@ func record_raw_hue(hue_occurences : Map*, count : HueCounts*, hue_elem : HueWit
   }
 }
 
-func merge_hue_counts(dest : HueCounts*, src : HueCounts const*)
+func merge_hue_counts(occurences : Map*, dest : HueCounts*, src : HueCounts const*)
 {
-  occurences : Map;
   for (hue_i:=0; hue_i<buf_len(src.hues); hue_i++) {
     hue := src.hues[hue_i];
-    record_raw_hue(&occurences, dest, hue);
+    record_raw_hue(occurences, dest, hue);
     dest.num_pixels += src.num_pixels;
   }
-  map_free(&occurences);
 }
 
 func pack_su_float(f : float, num_bits : int) : uint32
@@ -251,19 +254,19 @@ func test_pack_pt()
     num_bits := bit_sizes[i];
     y := pack_pt({t=1.0}, num_bits);
     pt := unpack_pt(y, num_bits);
-#assert(ipt96_isequal(pt, {t = 1.0}));
+    #assert(ipt96_isequal(pt, {t = 1.0}));
     
     y = pack_pt({t=-1.0}, num_bits);
     pt = unpack_pt(y, num_bits);
-#assert(ipt96_isequal(pt, {t = -1.0}));
+    #assert(ipt96_isequal(pt, {t = -1.0}));
     
     y = pack_pt({p=1.0}, num_bits);
     pt = unpack_pt(y, num_bits);
-#assert(ipt96_isequal(pt, {p=1.0}));
+    #assert(ipt96_isequal(pt, {p=1.0}));
     
     y = pack_pt({p=-1.0}, num_bits);
     pt = unpack_pt(y, num_bits);
-#assert(ipt96_isequal(pt, {p=-1.0}));
+    #assert(ipt96_isequal(pt, {p=-1.0}));
   }
 }
   
@@ -278,8 +281,7 @@ struct FooTransform
 
 struct FooHueCount
 {
-  key : uint32;
-  p, t : float;
+  packed_hue : uint32;
   n : usize;
   i_min : float;
   i_max : float;
@@ -288,6 +290,37 @@ struct FooHueCount
 func foo_hue_counts_key(packed_hue : uint32) : uint64
 {
   return 0xf | bits(packed_hue, 0, 32)<<4;
+}
+
+func foo_record_hue(occurences : Map*, dest_buf : FooHueCount**, input_count : FooHueCount)
+{
+  hue_key := foo_hue_counts_key(input_count.packed_hue);
+  count_idx_plus_one := intptr(map_get(occurences, hue_key));
+  count_idx : usize;
+  if (count_idx_plus_one) {
+    count_idx = count_idx_plus_one - 1;
+  } else {
+    count_idx = buf_len(*dest_buf);
+    count_idx_plus_one = count_idx + 1;
+    map_put(occurences, hue_key, (:void*)count_idx_plus_one);
+    buf_push(dest_buf, &FooHueCount{
+      packed_hue = input_count.packed_hue,
+      i_min = 1.0,
+      i_max = 0.0
+    }, sizeof(FooHueCount)); 
+  }
+  count : FooHueCount* = &(*dest_buf)[count_idx];
+  #assert(count.packed_hue == input_count.packed_hue);
+  count.i_min = input_count.i_min<count.i_min? input_count.i_min:count.i_min;
+  count.i_max = input_count.i_max>count.i_max? input_count.i_max:count.i_max;
+  count.n += input_count.n;
+}
+
+func foo_merge_hue_counts(occurences : Map*, dest_buf : FooHueCount**, src : FooHueCount const*, n : usize)
+{
+  for (src_i:=&src[0]; src_i<&src[n]; src_i++) {
+    foo_record_hue(occurences, dest_buf, *src_i);
+  }
 }
 
 func run_foo(foo : FooTransform*)
@@ -299,34 +332,13 @@ func run_foo(foo : FooTransform*)
   for (i:=0; i<foo.num_pixels; i++) {
     packed_hue := pack_pt(foo.inputIPT96[i], foo.num_bits);
     foo.packed_hues_buf[i] = packed_hue;
-    hue_key := foo_hue_counts_key(packed_hue);
-    count_idx_plus_one := intptr(map_get(&hue_counts_map, hue_key));
-    count_idx : usize;
-    if (count_idx_plus_one) {
-      count_idx = count_idx_plus_one - 1;
-    } else {
-      count_idx = buf_len(foo.hue_counts);
-      qhue := unpack_pt(packed_hue, foo.num_bits);
-      buf_push(&foo.hue_counts, &FooHueCount{
-        key = packed_hue,
-        p = qhue.p,
-        t = qhue.t,
-        i_min = 1.0,
-        i_max = 0.0
-      }, sizeof(FooHueCount));
-      count_idx_plus_one = count_idx + 1;
-      map_put(&hue_counts_map, hue_key, (:void*)count_idx_plus_one);
-    }
-    count : FooHueCount* = &foo.hue_counts[count_idx];
-    #assert(count.key == packed_hue);
     intensity := foo.inputIPT96[i].i;
-    if (intensity < count.i_min) { 
-      count.i_min = intensity;
-    }
-    if (intensity > count.i_max) {
-      count.i_max = intensity;
-    }
-    count.n++;
+    foo_record_hue(&hue_counts_map, &foo.hue_counts, 
+      {
+        packed_hue=packed_hue,
+        i_min=intensity, 
+        i_max=intensity
+      });
   }
   map_free(&hue_counts_map);
 }
