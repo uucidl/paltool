@@ -1,19 +1,35 @@
-var USAGE = "<paltool> <root-directory>";
+var USAGE = "<paltool> [a|b] <root-directory>";
 
 import filesystem { ... }
 import libc { ... }
 import tasks { ... }
 import codecs { ... }
 
+enum Mode
+{
+  Mode_A,
+  Mode_B,
+}
+
 struct MainArgs
 {
   root_dir : char*;
+  mode : Mode;
 }
 
 func parse_args(argc : int, argv: char**) : MainArgs
 {
   result : MainArgs;
   argi := 1;
+  mode : char*;
+  expect_str(&argi, argc, argv, &mode);
+  if (0 == strcmp("a", mode)) {
+    result.mode = Mode_A;
+  } else if (0 == strcmp("b", mode)) {
+    result.mode = Mode_B;
+  } else {
+    die_at(argi - 1, argc, argv, "Expected a|b");
+  }
   expect_str(&argi, argc, argv, &result.root_dir);
   return result;
 }
@@ -39,17 +55,15 @@ func main(argc: int, argv: char**) : int
       printf("[f]\t%s", file);
       if (str_match_suffix((:char*)file, ".jpg") || str_match_suffix((:char*)file, ".JPG")) {
         image : ImageTask;
-        {
           abspath : char* = strbuf("%s/%s", args.root_dir, (:char*)file);
           image_task_from_file(&image, abspath);
+          if (image.image.interleaved_channels) {
+            printf("\t[image/jpeg]");
+            buf_push(&image_tasks, &image, sizeof(image));
+          } else {
+            printf("\t[corrupt]");
+          }
           buf_free(abspath);
-        }
-        if (image.image.interleaved_channels) {
-          printf("\t[image/jpeg]");
-          buf_push(&image_tasks, &image, sizeof(image));
-        } else {
-          printf("\t[corrupt]");
-        }
       }
       printf("\n");
     }
@@ -93,22 +107,28 @@ func main(argc: int, argv: char**) : int
   for (i := 0; i < buf_len(image_tasks); i++) { image_task_free(&image_tasks[i]); }
   
   // Report:
-  printf("num_hues: %zu\n", buf_len(hue_counts.hues));
-  for (hue_i:=0; hue_i<buf_len(hue_counts.hues); hue_i++) {
-    hue := hue_counts.hues[hue_i];
-    if (hue.num == 1) { continue; }
-    srgb : float[3];
-    srgb_from_ipt(1, srgb, 3, hue.ipt, 3);
-    printf("%zu\t%f\t#%02x %02x %02x\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+  if (args.mode == Mode_A) {
+    printf("num_hues: %zu\n", buf_len(hue_counts.hues));
+    for (hue_i:=0; hue_i<buf_len(hue_counts.hues); hue_i++) {
+      hue := hue_counts.hues[hue_i];
+      if (hue.num == 1) { continue; }
+      srgb : float[3];
+      srgb_from_ipt(1, srgb, 3, hue.ipt, 3);
+      printf("%zu\t%f\t#%02x %02x %02x\tA\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+    }
   }
-  for (i:=0; i<buf_len(foo_counts); i++) {
-    counts : FooHueCount const* = &foo_counts[i];
-    if (counts.n == 1) { continue; }
-    hue := unpack_pt(counts.packed_hue, foo_num_bits);
-    srgb : float[3];
-    ipt : float[3] = { counts.i_max, hue.p, hue.t };
-    srgb_from_ipt(1, srgb, 3, ipt, 3);
-    printf("foo\t%zu\t%f %f\t#%02x %02x %02x\n", counts.n, hue.p, hue.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+  if (args.mode == Mode_B) {
+    ipt_grey_threshold := 2.0*0.05*0.05;
+    for (i:=0; i<buf_len(foo_counts); i++) {
+      counts : FooHueCount const* = &foo_counts[i];
+      if (counts.n == 1) { continue; }
+      hue := unpack_pt(counts.packed_hue, foo_num_bits);
+      if (ipt_grey_threshold >= hue.p*hue.p + hue.t*hue.t) { continue; }
+      srgb : float[3];
+      ipt : float[3] = { counts.i_max, hue.p, hue.t };
+      srgb_from_ipt(1, srgb, 3, ipt, 3);
+      printf("%zu\t%f %f\t#%02x %02x %02x\tB\n", counts.n, hue.p, hue.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+    }
   }
 
   tasks_deinit();
