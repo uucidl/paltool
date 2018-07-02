@@ -17,19 +17,62 @@ const ArrayMagic = 0xcfce_6cd4;
 
 func array_free(array : Array*)
 {
+    *array = {};
     libc_free(array);
 }
 
-func array_alloc(num_elems : usize, elem_size : usize) : Array*
+func array_reset(array : Array*) : Array*
 {
-    needed_capacity := mul_with_overflow_check_usize(num_elems, elem_size);
-    array : Array* = libc_alloc(1, sizeof(Array) + needed_capacity);
-    *array = {
-        capacity = needed_capacity,
-        magic = ArrayMagic,
-        elem_size = elem_size,
-    };
+    array_free(array);
+    return NULL;
+}
+
+func array_alloc(array : Array*, num_elem : usize, elem_size : usize) : Array*
+{
+    needed_capacity := mul_with_overflow_check_usize(num_elem, elem_size);
+    if (!array) {
+       array = libc_alloc(1, sizeof(Array) + needed_capacity);
+        *array = {
+            capacity = needed_capacity,
+            magic = ArrayMagic,
+            elem_size = elem_size,
+        }; 
+    } else if (array.capacity < needed_capacity) {
+        #assert(elem_size == array.elem_size);
+        old_capacity := array.capacity;
+        next_capacity := old_capacity * 2;
+        new_capacity := needed_capacity>next_capacity? needed_capacity:next_capacity;
+        array = realloc(array, sizeof(Array) + new_capacity);
+        memset(&array.bytes[old_capacity], 0, new_capacity - old_capacity);
+        array.capacity = new_capacity;
+    }
+    if (num_elem > array.size) {
+        array.size = num_elem;
+        #assert(array.size <= array.capacity);
+    }
     return array;
+}
+
+func array_length(array : Array*) : usize
+{
+    if (!array) { return 0; }
+    return array.elem_size * array.size;
+}
+
+func test_array()
+{
+    {
+        array : Array*;
+        #assert(array_length(array) == 0);
+        array = array_alloc(array, 0, 2);
+        #assert(array);
+        #assert(array_length(array) == 0);
+        array = array_alloc(array, 8, 2);
+        #assert(array_length(array) == 16);
+        array = array_reset(array);
+        #assert(array_length(array) == 0);
+    }
+
 }
 
 const USIZE_MUL_MAX = usize(1)<<(sizeof(usize)*8/2);
@@ -39,14 +82,4 @@ func mul_with_overflow_check_usize(a : usize, b : usize) : usize
     would_overflow := (a >= USIZE_MUL_MAX || b >= USIZE_MUL_MAX) && a > 0 && USIZE_MAX/a > b;
     #assert(!would_overflow);
     return a * b;
-}
-
-func test_mul_with_overflow_check_usize()
-{
-    for (a: usize =1; a<USIZE_MAX; a++) {
-        b: usize = 0;
-        #assert(mul_with_overflow_check_usize(a, b) == 0);
-        b = USIZE_MAX/a;
-        #assert(mul_with_overflow_check_usize(a, b) == USIZE_MAX); 
-    }
 }

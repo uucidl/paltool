@@ -36,11 +36,12 @@ func parse_args(argc : int, argv: char**) : MainArgs
 
 func main(argc: int, argv: char**) : int
 {
-  args := parse_args(argc, argv);
   test_colorspaces();
   test_ipt96_from_rgb24_transform();
   test_pack_pt();
-  // @todo test_mul_with_overflow_check_usize();
+  test_array();
+
+  args := parse_args(argc, argv);
   tasks_init();
 
   printf("INFO: listing all files from root: %s\n", args.root_dir);
