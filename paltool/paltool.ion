@@ -40,7 +40,7 @@ func main(argc: int, argv: char**) : int
   test_colorspaces();
   test_ipt96_from_rgb24_transform();
   test_pack_pt();
-  test_mul_with_overflow_check_usize();
+  // @todo test_mul_with_overflow_check_usize();
   tasks_init();
 
   printf("INFO: listing all files from root: %s\n", args.root_dir);

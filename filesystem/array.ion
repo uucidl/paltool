@@ -43,7 +43,7 @@ func mul_with_overflow_check_usize(a : usize, b : usize) : usize
 
 func test_mul_with_overflow_check_usize()
 {
-    for (a: usize =0; a<USIZE_MAX; a++) {
+    for (a: usize =1; a<USIZE_MAX; a++) {
         b: usize = 0;
         #assert(mul_with_overflow_check_usize(a, b) == 0);
         b = USIZE_MAX/a;
