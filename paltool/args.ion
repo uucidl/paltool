@@ -14,8 +14,12 @@ func expect_arg(argi: int, argc: int, argv: char**, error : char*) {
      }
 }
 
-func expect_str(argi: int*, argc: int, argv: char**, dest_str : char**) {
-     expect_arg(*argi, argc, argv, "expected string");
+func expect_str(argi: int*, argc: int, argv: char**, dest_str : char**, desc : char const*) {
+     if (*argi >= argc) {
+         error := strbuf("expected %s", desc);
+         die_at(*argi, argc, argv, error);
+         buf_free(error);
+     }
      *dest_str = argv[*argi];
      *argi = *argi + 1;
 }

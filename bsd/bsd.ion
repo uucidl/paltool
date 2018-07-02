@@ -1,3 +1,5 @@
+// @note: tested on osx,x64 only
+
 #foreign(header="<sys/errno.h>")
 
 @foreign("errno")

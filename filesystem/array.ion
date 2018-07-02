@@ -1,0 +1,52 @@
+import libc {
+    libc_free = free,
+    libc_alloc = calloc,
+    libc_realloc = realloc
+}
+
+struct Array
+{
+  magic     : int32;
+  capacity  : int32;
+  size      : int32;
+  elem_size : int32;
+  bytes     : uint8[1];
+}
+
+const ArrayMagic = 0xcfce_6cd4;
+
+func array_free(array : Array*)
+{
+    libc_free(array);
+}
+
+func array_alloc(num_elems : usize, elem_size : usize) : Array*
+{
+    needed_capacity := mul_with_overflow_check_usize(num_elems, elem_size);
+    array : Array* = libc_alloc(1, sizeof(Array) + needed_capacity);
+    *array = {
+        capacity = needed_capacity,
+        magic = ArrayMagic,
+        elem_size = elem_size,
+    };
+    return array;
+}
+
+const USIZE_MUL_MAX = usize(1)<<(sizeof(usize)*8/2);
+
+func mul_with_overflow_check_usize(a : usize, b : usize) : usize
+{
+    would_overflow := (a >= USIZE_MUL_MAX || b >= USIZE_MUL_MAX) && a > 0 && USIZE_MAX/a > b;
+    #assert(!would_overflow);
+    return a * b;
+}
+
+func test_mul_with_overflow_check_usize()
+{
+    for (a: usize =0; a<USIZE_MAX; a++) {
+        b: usize = 0;
+        #assert(mul_with_overflow_check_usize(a, b) == 0);
+        b = USIZE_MAX/a;
+        #assert(mul_with_overflow_check_usize(a, b) == USIZE_MAX); 
+    }
+}

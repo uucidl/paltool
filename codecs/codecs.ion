@@ -21,7 +21,7 @@ func image_load(filename : char const*, desired_num_channels : int) : Image
   return result;
 }
 
-func free_loaded_image(pixels : Image*)
+func image_free(pixels : Image*)
 {
   stbi_image_free(pixels.interleaved_channels);
   pixels = {};

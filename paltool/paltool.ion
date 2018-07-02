@@ -22,7 +22,7 @@ func parse_args(argc : int, argv: char**) : MainArgs
   result : MainArgs;
   argi := 1;
   mode : char*;
-  expect_str(&argi, argc, argv, &mode);
+  expect_str(&argi, argc, argv, &mode, "mode string");
   if (0 == strcmp("a", mode)) {
     result.mode = Mode_A;
   } else if (0 == strcmp("b", mode)) {
@@ -30,7 +30,7 @@ func parse_args(argc : int, argv: char**) : MainArgs
   } else {
     die_at(argi - 1, argc, argv, "Expected a|b");
   }
-  expect_str(&argi, argc, argv, &result.root_dir);
+  expect_str(&argi, argc, argv, &result.root_dir, "root dir");
   return result;
 }
 
@@ -40,6 +40,7 @@ func main(argc: int, argv: char**) : int
   test_colorspaces();
   test_ipt96_from_rgb24_transform();
   test_pack_pt();
+  test_mul_with_overflow_check_usize();
   tasks_init();
 
   printf("INFO: listing all files from root: %s\n", args.root_dir);
@@ -93,15 +94,15 @@ func main(argc: int, argv: char**) : int
   foo_counts : FooHueCount*;
   foo_num_bits : int;
   {
-    occurence_map : Map;
+    index : Map;
     foo_index : Map;
     for (image_idx:=0; image_idx<buf_len(image_tasks); image_idx++) {
       task := image_tasks[image_idx].task_data;
-      merge_hue_counts(&occurence_map, &hue_counts, &task.count_hue.result);
+      merge_hue_counts(&index, &hue_counts, &task.count_hue.result);
       foo_num_bits = task.foo.num_bits;
       foo_merge_hue_counts(&foo_index, &foo_counts, &task.foo.hue_counts[0], buf_len(task.foo.hue_counts));
     }
-    map_free(&occurence_map);
+    map_free(&index);
     map_free(&foo_index);
   }
   for (i := 0; i < buf_len(image_tasks); i++) { image_task_free(&image_tasks[i]); }
@@ -210,15 +211,15 @@ func count_hue_hue_key(hue_angle : float) : uint64
   return 0xf | (bits_float(hue_angle)<<4);
 }
 
-func record_raw_hue(hue_occurences : Map*, count : HueCounts*, hue_elem : HueWithOccurence)
+func record_raw_hue(hue_index : Map*, count : HueCounts*, hue_elem : HueWithOccurence)
 {
   hue_key := count_hue_hue_key(hue_elem.hue_angle);
-  hue_idx_plus_one := intptr(map_get(hue_occurences, hue_key));
+  hue_idx_plus_one := intptr(map_get(hue_index, hue_key));
   if (hue_idx_plus_one == 0)
   {
     hue_idx_plus_one = buf_len(count.hues) + 1;
     buf_push(&count.hues, &hue_elem, sizeof(hue_elem));
-    map_put(hue_occurences, hue_key, (:void*)hue_idx_plus_one);
+    map_put(hue_index, hue_key, (:void*)hue_idx_plus_one);
   }
   else
   {
@@ -232,11 +233,11 @@ func record_raw_hue(hue_occurences : Map*, count : HueCounts*, hue_elem : HueWit
   }
 }
 
-func merge_hue_counts(occurences : Map*, dest : HueCounts*, src : HueCounts const*)
+func merge_hue_counts(index : Map*, dest : HueCounts*, src : HueCounts const*)
 {
   for (hue_i:=0; hue_i<buf_len(src.hues); hue_i++) {
     hue := src.hues[hue_i];
-    record_raw_hue(occurences, dest, hue);
+    record_raw_hue(index, dest, hue);
     dest.num_pixels += src.num_pixels;
   }
 }
@@ -319,17 +320,17 @@ func foo_hue_counts_key(packed_hue : uint32) : uint64
   return 0xf | bits(packed_hue, 0, 32)<<4;
 }
 
-func foo_record_hue(occurences : Map*, dest_buf : FooHueCount**, input_count : FooHueCount)
+func foo_record_hue(index : Map*, dest_buf : FooHueCount**, input_count : FooHueCount)
 {
   hue_key := foo_hue_counts_key(input_count.packed_hue);
-  count_idx_plus_one := intptr(map_get(occurences, hue_key));
+  count_idx_plus_one := intptr(map_get(index, hue_key));
   count_idx : usize;
   if (count_idx_plus_one) {
     count_idx = count_idx_plus_one - 1;
   } else {
     count_idx = buf_len(*dest_buf);
     count_idx_plus_one = count_idx + 1;
-    map_put(occurences, hue_key, (:void*)count_idx_plus_one);
+    map_put(index, hue_key, (:void*)count_idx_plus_one);
     buf_push(dest_buf, &FooHueCount{
       packed_hue = input_count.packed_hue,
       i_min = 1.0,
@@ -343,10 +344,10 @@ func foo_record_hue(occurences : Map*, dest_buf : FooHueCount**, input_count : F
   count.n += input_count.n;
 }
 
-func foo_merge_hue_counts(occurences : Map*, dest_buf : FooHueCount**, src : FooHueCount const*, n : usize)
+func foo_merge_hue_counts(index : Map*, dest_buf : FooHueCount**, src : FooHueCount const*, n : usize)
 {
   for (src_i:=&src[0]; src_i<&src[n]; src_i++) {
-    foo_record_hue(occurences, dest_buf, *src_i);
+    foo_record_hue(index, dest_buf, *src_i);
   }
 }
 
@@ -397,7 +398,7 @@ func image_task_from_file(tasks : ImageTask*, abspath : char*)
 
 func image_task_free(task : ImageTask*)
 {
-  free_loaded_image(&task.image);
+  image_free(&task.image);
   free(task.task_data);
   task.task_data = NULL;
 }
@@ -461,20 +462,20 @@ func run_count_hues(transform : CountHueTransform*)
     sizeof(transform.result.hues[0]),
     transform.num_pixels/4);
 
-  hue_occurences : Map;
+  hue_index : Map;
   src := transform.inputIPT96;
   for (i:=0; i<transform.num_pixels; i++) {
     ipt : float[3] = { src[i].i, src[i].p, src[i].t };
     hue_angle := atan2(ipt[1], ipt[2]);
     // @todo pass as parameter
     quantized_hue_angle := round(3000.0*hue_angle)/3000.0;
-    record_raw_hue(&hue_occurences, &transform.result, {
+    record_raw_hue(&hue_index, &transform.result, {
 	    hue_angle = quantized_hue_angle,
 	    num = 1,
 	    ipt = { ipt[0], ipt[1], ipt[2] },
     });
   }
-  map_free(&hue_occurences);
+  map_free(&hue_index);
 }
 
 func test_ipt96_from_rgb24_transform()
