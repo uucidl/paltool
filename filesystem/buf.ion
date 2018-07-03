@@ -7,123 +7,44 @@ func buf_push(opaque_buf_ptr : void*, elem : void*, elem_size : usize)
 
 func buf_cap(opaque_buf : void*) : usize
 {
-  cap := opaque_buf? buf_hdr(opaque_buf).capacity : 0;
-  return cap;
+  return array_capacity(buf_hdr(opaque_buf));
 }
 
 func buf_len(opaque_buf : void*) : usize
 {
-  if (!opaque_buf) { return 0; }
-  hdr := buf_hdr(opaque_buf);
-  return hdr.size/buf_hdr_elem_size(hdr);
+  return array_length(buf_hdr(opaque_buf));
 }
 
 func buf_free(opaque_buf : void*)
 {
-  if (!opaque_buf) { return; }
-  hdr := buf_hdr(opaque_buf);
-  hdr.magic = 0x0000;
-  free(hdr);
+  array_reset(buf_hdr(opaque_buf));
 }
 
 func buf_fit(opaque_buf : void*, elem_size : usize, num_added : usize) : void*
 {
-  added_size := num_added*elem_size; // @todo overflow check
-  hdr := opaque_buf? buf_hdr(opaque_buf) : NULL;
-  if (!hdr)
-  {  
-    hdr = calloc(1, sizeof(BufHeader) + added_size);
-    *hdr = {
-        capacity = added_size,
-        magic = BufHeaderMagic,
-    };
-    buf_hdr_check_elem_size(hdr, elem_size);
-	  return &hdr.bytes[0];
-  }
-  buf_hdr_check_elem_size(hdr, elem_size);
-  size := added_size + hdr.size;
-  #assert(size < INT32_MAX);
-  #assert((hdr.magic & 0xffff) == BufHeaderMagic);
-  need_capacity := size;
-  if (need_capacity > hdr.capacity)
-  {
-    old_capacity := hdr.capacity;
-    next_capacity := 2*old_capacity;
-    new_capacity := need_capacity>next_capacity? need_capacity:next_capacity;
-    hdr = realloc(hdr, sizeof(BufHeader) + new_capacity);
-    memset(&hdr.bytes[old_capacity], 0, new_capacity - old_capacity);
-    hdr.capacity = new_capacity;
-    #assert(hdr.capacity >= size);
-  }
+  hdr := buf_hdr(opaque_buf);
+  old_size := array_size(hdr);
+  hdr = array_alloc(hdr, num_added + array_length(hdr), elem_size);
+  hdr.size = old_size;
   return &hdr.bytes[0];
 }
 
 func buf__add_n(opaque_buf : void*, data : void const*, elem_size : usize, num_added : usize)
 {
   hdr := buf_hdr(opaque_buf);
-  #assert(bits_u64(hdr.magic, 0, 16) == BufHeaderMagic);
-  buf_hdr_check_elem_size(hdr, elem_size);
   // @todo overflow check
   data_size := num_added * elem_size;
-  #assert(data_size < INT32_MAX - hdr.capacity);
-  #assert(data_size <= hdr.capacity - hdr.size);
+  available_size := hdr.capacity - hdr.size;
+  #assert(data_size <= available_size);
   memcpy(&hdr.bytes[hdr.size], data, data_size);
   hdr.size += elem_size;
 }
 
-func buf_hdr_check_elem_size(hdr : BufHeader*, elem_size : usize)
+func buf_hdr(opaque_buf : void*) : Array*
 {
-  #assert(elem_size < uint64(1)<<48);
-  hdr_elem_size := buf_hdr_elem_size(hdr);
-  if(hdr_elem_size == 0) {
-    hdr_elem_size = elem_size;
-    hdr.magic |= hdr_elem_size<<16;
-  }
-  #assert(hdr_elem_size == elem_size);
-}
-
-struct BufHeader
-{
-  capacity : int32;
-  size     : int32;
-  magic    : int64;
-  bytes    : uint8[1];
-}
-
-func buf_hdr_elem_size(hdr : BufHeader*) : usize
-{
-  return _unpack_magic(hdr.magic);
-}
-
-const BufHeaderMagic = 0x6731;
-
-func _pack_magic(elem_size : usize) : uint64
-{
-  #assert(elem_size < uint64(1)<<48);
-  return BufHeaderMagic | (elem_size<<16);
-}
-
-func _check_magic(x : uint64)
-{
-  #assert(x & 0xffff == BufHeaderMagic);
-}
-
-func _unpack_magic(x : uint64) : usize
-{
-  #assert(x & 0xffff == BufHeaderMagic);
-  return bits_u64(x, 16, 48);
-}
-
-func buf_hdr(opaque_buf : void*) : BufHeader*
-{
-  addr := ((:uint8*) opaque_buf) - offsetof(BufHeader, bytes);
-  hdr := (:BufHeader*) addr;
-  _check_magic(hdr.magic);
-  #assert(hdr.capacity >= 0);
-  #assert(hdr.size >= 0);
-  return hdr;  
-}
-
-func bits_u64(x : uint64, start : int, len : int) : uint64 {
-  return (x>>start) & ((uint64(1)<<len) - 1);
+  if (!opaque_buf) { return NULL; }
+  addr := ((:uint8*) opaque_buf) - offsetof(Array, bytes);
+  hdr := (:Array*) addr;
+  array__check_magic(hdr);
+  return hdr;
 }
