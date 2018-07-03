@@ -3,6 +3,8 @@ import libc {
     libc_alloc = calloc,
     libc_realloc = realloc,
     memcmp,
+    memcpy,
+    memset,
 }
 
 struct Array
@@ -45,10 +47,10 @@ func array_alloc(array : Array*, num_elem : usize, elem_size : usize) : Array*
     } else if (array.capacity < needed_capacity) {
         #assert(elem_size == array.elem_size);
         old_capacity := array.capacity;
-        next_capacity := old_capacity * 2;
+        next_capacity := 1 + old_capacity * 2;
         new_capacity := needed_capacity>next_capacity? needed_capacity:next_capacity;
         array.magic = 1; 
-        array = realloc(array, sizeof(Array) + new_capacity);
+        array = libc_realloc(array, sizeof(Array) + new_capacity);
         memset(&array.bytes[old_capacity], 0, new_capacity - old_capacity);
         array.capacity = new_capacity;
         array.magic = ArrayMagic;
@@ -105,7 +107,7 @@ func test_array()
     {
         array : Array*;
         array = array_alloc(array, 11, 2);
-        array_alloc(array, 11+1, 2);
+        array = array_alloc(array, 11+1, 2);
         old_array := array;
         array = array_alloc(array, 11+11-1, 2);
         #assert(old_array == array);

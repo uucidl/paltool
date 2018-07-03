@@ -1,3 +1,10 @@
+import libc {
+  libc_calloc = calloc,
+  libc_malloc = malloc,
+  libc_free = free,
+  libc_exit = exit,
+}
+
 struct Map
 {
   keys : uint64*;
@@ -10,12 +17,12 @@ func map_grow(map : Map*, size : usize)
 {
      size = pow2_ge_uint64(size);
      new_map : Map = {
-          keys = calloc(size, sizeof(map.keys[0])),
-          ptrs = malloc(size * sizeof(map.ptrs[0])),
+          keys = libc_calloc(size, sizeof(map.keys[0])),
+          ptrs = libc_malloc(size * sizeof(map.ptrs[0])),
           cap = size,
      };
-     if (!new_map.keys) { exit(1); }
-     if (!new_map.ptrs) { exit(1); }
+     if (!new_map.keys) { libc_exit(1); }
+     if (!new_map.ptrs) { libc_exit(1); }
 
      for (i:=0; i<map.cap; i++)
      {
@@ -28,16 +35,16 @@ func map_grow(map : Map*, size : usize)
      #assert(is_pow2_uint64(new_map.cap));
      #assert(new_map.len == map.len);
 
-     free(map.keys);
-     free(map.ptrs);
+     libc_free(map.keys);
+     libc_free(map.ptrs);
 
      *map = new_map;
 }
 
 func map_free(map : Map*)
 {
-     free(map.keys); map.keys = NULL;
-     free(map.ptrs); map.ptrs = NULL;
+     libc_free(map.keys); map.keys = NULL;
+     libc_free(map.ptrs); map.ptrs = NULL;
      *map = {};
 }
 
@@ -93,7 +100,7 @@ func map_put(map : Map*, key : uint64, data : void*)
           index++;
      } while (index != last);
      #assert(false);
-     exit(1);
+     libc_exit(1);
 }
 
 func map_remove(map : Map*, key : uint64)
@@ -116,7 +123,7 @@ func map_remove(map : Map*, key : uint64)
           index++;
      } while (index != last);
      #assert(0);
-     exit(1);
+     libc_exit(1);
 }
 
 func hash_uint64(x : uint64) : uint64
