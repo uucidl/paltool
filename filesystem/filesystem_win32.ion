@@ -1,0 +1,32 @@
+import containers {...}
+import win32 {...}
+
+struct PlatformPathListGenerator
+{
+  query : HANDLE;
+}
+
+func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerator
+{
+     
+    necessary_wchars := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, NULL, 0);
+	root_u : wchar* = buf_fit(NULL, sizeof(int16), necessary_wchars + 1);
+	wrote := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, &root_u[0], buf_cap(root_u));
+    if (wrote > 0)
+    {
+      buf_hdr(root_u).size = wrote * sizeof(root_u[0]);
+      #assert(buf_len(root_u) == necessary_wchars);
+    }
+    buf_free(root_u);
+	return {};
+}
+
+func platform_next_paths(generator : PathListGenerator*)
+{
+  #assert("not implemented");
+}
+
+func platform_free_generator(generator : PathListGenerator*)
+{
+  #assert("not implemented");
+}

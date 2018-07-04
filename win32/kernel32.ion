@@ -1,0 +1,37 @@
+#foreign(header="<windows.h>")
+#foreign(source="kernel32.c")
+
+const CP_UTF8 = 65001;
+
+enum FINDEX_INFO_LEVELS
+{
+  FindExInfoStandard,
+  FindExInfoBasic,
+  FindExInfoMaxInfoLevel
+}
+
+enum FINDEX_SEARCH_OPS { 
+  FindExSearchNameMatch,
+  FindExSearchLimitToDirectories,
+  FindExSearchLimitToDevices
+} 
+
+@foreign("FindFirstFileExW")
+func FindFirstFileExW(
+  lpFileName : LPCTSTR,
+  fInfoLevelId : FINDEX_INFO_LEVELS,
+  lpFindFileData : LPVOID,
+  fSearchOp : FINDEX_SEARCH_OPS,
+  lpSearchFilter : LPVOID,
+  dwAdditionalFlags : DWORD 
+) : HANDLE;
+
+@foreign("MultiByteToWideChar")
+func MultiByteToWideChar(
+  CodePath : UINT,
+  dwFlags : DWORD,
+  lpMultiByteStr : LPCSTR,
+  cbMultiByte : int,
+  lpWideCharStr : LPWSTR,
+  cchWideChar : int
+) : int;

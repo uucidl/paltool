@@ -1,5 +1,20 @@
-//import filesystem {...}
+import filesystem {...}
+import libc {...}
 
 func main(argc : int, argv: char**) : int {
+  for (argi := 1; argi < argc; argi++) {
+    paths := find_all_files_recursively((:uint8*)argv[argi]);
+    while (paths.error != PathListError_None) {
+      list := paths.output;
+      for (path := &list.dirpaths[0]; path != &list.dirpaths[list.num_dirpaths]; path++) {
+        printf("[d]\t[%s]\n", (:char const*)path);
+      }
+      for (path := &list.filepaths[0]; path != &list.filepaths[list.num_dirpaths]; path++) {
+        printf("[f]\t[%s]\n", (:char const*)path);
+      }
+      next_paths(&paths);
+    }
+    free_generator(&paths);
+  }
   return 1; // @todo unimplemented
 }

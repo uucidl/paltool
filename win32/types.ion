@@ -1,0 +1,8 @@
+typedef DWORD = uint32;
+typedef HANDLE = void*;
+typedef UINT = uint;
+
+typedef LPCSTR = char const*;
+typedef LPWSTR = wchar*;
+typedef LPCTSTR = wchar const*;
+typedef LPVOID = void*;
