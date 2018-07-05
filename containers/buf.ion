@@ -50,6 +50,11 @@ func buf_cat_range(opaque_buf_ptr : void*, elem_size : usize, first : void const
   buf__add_n(*buf_ptr, first, elem_size, n);
 }
 
+func buf_cat_n(opaque_buf_ptr : void*, elem_size : usize, first : void const*, num_added : usize)
+{
+  buf_cat_range(opaque_buf_ptr, elem_size, first, ((:uint8 const*)first) + elem_size*num_added);
+}
+
 func buf__add_n(opaque_buf : void*, data : void const*, elem_size : usize, num_added : usize)
 {
   hdr := buf_hdr_mutable(opaque_buf);

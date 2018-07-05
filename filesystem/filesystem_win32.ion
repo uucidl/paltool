@@ -4,6 +4,7 @@ import libc {
   libc_calloc = calloc,
   libc_free = free,
   libc_strlen = strlen,
+  printf,
 }
 
 struct PlatformPathListGenerator
@@ -15,26 +16,32 @@ struct PlatformPathListGenerator
 
 func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerator
 {
-    necessary_wchars := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, NULL, 0);
-	root_u : wchar* = buf_fit(NULL, sizeof(int16), necessary_wchars + 1);
-    // @todo prefix with \\?\
-	wrote := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, &root_u[buf_len(root_u)], buf_cap(root_u)-buf_len(root_u));
-    if (wrote > 0)
-    {
-      buf_hdr_mutable(root_u).size = wrote * sizeof(root_u[0]);
-      #assert(buf_len(root_u) == necessary_wchars);
-    }
-
-	// @todo: disallow ending \\ or / or always append \* to the path
-
 	result := PathListGenerator{
       error = PathListError_InvalidRoot
     };
 
+	query_str : wchar*;
+    necessary_wchars := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, NULL, 0);
+    buf_cat_wchars_from_zstr_ascii(&query_str, "\\\\?\\");
+    query_str = buf_fit(query_str, sizeof(int16), necessary_wchars + 1);
+	wrote := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, &query_str[buf_len(query_str)], buf_cap(query_str)-buf_len(query_str));
+    if (wrote > 1)
+    {
+      buf_hdr_mutable(query_str).size += (wrote - 1) * sizeof(query_str[0]);
+    }
+    suffix := "\\*";
+    if (query_str[buf_len(query_str) - 1] == suffix[0]) {
+      buf_cat_wchars_from_zstr_ascii(&query_str, &suffix[1]);
+    } else {
+      buf_cat_wchars_from_zstr_ascii(&query_str, &suffix[0]);
+    }
+
+    printf("hello <%ls>\n\n", query_str);
+
     // Open query and get info about first file:
     one_file : WIN32_FIND_DATAW;
     AdditionalFlags := FIND_FIRST_EX_LARGE_FETCH; // @todo @platform_specific{windows>7}
-	query := FindFirstFileExW(root_u, FindExInfoStandard, &one_file, FindExSearchNameMatch, NULL, AdditionalFlags);
+	query := FindFirstFileExW(query_str, FindExInfoStandard, &one_file, FindExSearchNameMatch, NULL, AdditionalFlags);
 
     if (query != INVALID_HANDLE_VALUE) {
 		result.resources = libc_calloc(1, sizeof(PlatformPathListGenerator));
@@ -46,7 +53,7 @@ func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerato
 		fill_path_list_from_win32_find_data(&result.output, one_file, &result.resources.arena);
         result.error = PathListError_None;
     }
-    buf_free(root_u);
+    buf_free(query_str);
     // @todo preserve root in list result
 	return result;
 }
@@ -94,6 +101,17 @@ func zutf8_from_zwchar_arena(zwstring : wchar*, arena : MemoryArena*) : uint8*
 	output : char* = arena_alloc(arena, necessary_bytes);
     WideCharToMultiByte(CP_UTF8, 0, zwstring, -1, output, necessary_bytes, NULL, NULL);
     return (:uint8*)output;
+}
+
+func buf_cat_wchars_from_zstr_ascii(buf : wchar**, ascii : char const*)
+{
+  while (*ascii) {
+    x : int16 = *ascii;
+    buf_push(buf, &x, sizeof(x));
+    ++ascii;
+  }
+  *buf = buf_fit(*buf, 2, 1);
+  (*buf)[buf_len((*buf))] = 0;
 }
 
 

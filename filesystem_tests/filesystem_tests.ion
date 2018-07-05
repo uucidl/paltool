@@ -11,10 +11,10 @@ func main(argc : int, argv: char**) : int {
       while (paths.error == PathListError_None) {
         list := paths.output;
         for (i:=0; i<list.num_dirpaths; i++) {
-          printf("[d]\t[%s]\n", (:char const*)list.dirpaths[i]);
+          printf("[d]\t\"%s\"\n", (:char const*)list.dirpaths[i]);
         }
         for (i:=0; i<list.num_filepaths; i++) {
-          printf("[f]\t[%s]\n", (:char const*)list.filepaths[i]);
+          printf("[f]\t\"%s\"\n", (:char const*)list.filepaths[i]);
         }
         next_paths(&paths);
       }
