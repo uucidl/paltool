@@ -96,11 +96,11 @@ func platform_next_paths(generator : PathListGenerator*)
   }
 
   if (generator.output.filepaths) {
-    buf_hdr(generator.output.filepaths).size = 0;
+    buf_hdr_mutable(generator.output.filepaths).size = 0;
     generator.output.num_filepaths = 0;
   }
   if (generator.output.dirpaths) {
-    buf_hdr(generator.output.dirpaths).size = 0;
+    buf_hdr_mutable(generator.output.dirpaths).size = 0;
     generator.output.num_dirpaths = 0;
   }
   

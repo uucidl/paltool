@@ -29,7 +29,7 @@ func strbuf_vcatf(bufptr : char**, fmt : char const*, input_args : va_list)
     #assert(n <= new_cap);
     va_end(&args);
   }
-  buf_hdr(*bufptr).size += sizeof(char)*(n - 1);
+  buf_hdr_mutable(*bufptr).size += sizeof(char)*(n - 1);
 }
 func strbuf_catf(bufptr : char**, fmt : char const*, ...) {
   args : va_list;

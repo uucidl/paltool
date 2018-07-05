@@ -20,6 +20,7 @@ const ArrayMagic = 0xcfce_6cd4;
 
 func array__free(array : Array*)
 {
+    if (!array) { return; }
     *array = {};
     libc_free(array);
 }
