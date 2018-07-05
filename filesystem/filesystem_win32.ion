@@ -2,25 +2,26 @@ import containers {...}
 import win32 {...}
 import libc {
   libc_calloc = calloc,
-  libc_free = free
+  libc_free = free,
+  libc_strlen = strlen,
 }
 
 struct PlatformPathListGenerator
 {
   query : HANDLE;
+  root  : uint8*;
   arena : MemoryArena;
 }
 
 func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerator
 {
-     
     necessary_wchars := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, NULL, 0);
 	root_u : wchar* = buf_fit(NULL, sizeof(int16), necessary_wchars + 1);
     // @todo prefix with \\?\
 	wrote := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, &root_u[buf_len(root_u)], buf_cap(root_u)-buf_len(root_u));
     if (wrote > 0)
     {
-      buf_hdr(root_u).size = wrote * sizeof(root_u[0]);
+      buf_hdr_mutable(root_u).size = wrote * sizeof(root_u[0]);
       #assert(buf_len(root_u) == necessary_wchars);
     }
 
@@ -40,7 +41,9 @@ func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerato
         *result.resources = {
           query = query,
         };
-		fill_path_list_from_win32_find_data(&result.output, root_u, one_file, &result.resources.arena);
+        buf_cat_range(&result.resources.root, sizeof(root[0]), &root[0], &root[libc_strlen((:char const*)root)]);
+        result.output.root = result.resources.root;
+		fill_path_list_from_win32_find_data(&result.output, one_file, &result.resources.arena);
         result.error = PathListError_None;
     }
     buf_free(root_u);
@@ -48,9 +51,10 @@ func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerato
 	return result;
 }
 
-func fill_path_list_from_win32_find_data(list : PathList*, root : wchar*, file : WIN32_FIND_DATAW, arena : MemoryArena*)
+func fill_path_list_from_win32_find_data(list : PathList*, file : WIN32_FIND_DATAW, arena : MemoryArena*)
 {
-    *list = {};
+    list.num_dirpaths = 0;
+    list.num_filepaths = 0;
 	if (file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
 		list.num_dirpaths = 1;
         list.dirpaths = arena_alloc(arena, sizeof(:uint8*));
@@ -70,12 +74,14 @@ func platform_next_paths(generator : PathListGenerator*)
       return;
   }
   arena_reset(&generator.resources.arena);
-  fill_path_list_from_win32_find_data(&generator.output, NULL, one_file, &generator.resources.arena);
+  generator.output.root = generator.resources.root;
+  fill_path_list_from_win32_find_data(&generator.output, one_file, &generator.resources.arena);
 }
 
 func platform_free_generator(generator : PathListGenerator*)
 {
   if (!generator.resources) { return; }
+  buf_free(generator.resources.root);
   arena_free(&generator.resources.arena);
   libc_free(generator.resources);
   generator.resources = NULL;
@@ -142,7 +148,7 @@ func arena_free(arena : MemoryArena*)
 
 func arena_segment_reset(segment : MemorySegment*)
 {
-   segment.used = 0;
+	segment.used = 0;
 }
 
 func arena_segment_available_size(segment : MemorySegment const*) : usize

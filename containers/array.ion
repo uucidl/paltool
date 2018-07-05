@@ -62,22 +62,29 @@ func array_alloc(array : Array*, num_elem : usize, elem_size : usize) : Array*
     return array;
 }
 
-func array_capacity(array : Array*) : usize
+func array_capacity(array : Array const*) : usize
 {
     if (!array) { return 0; }
     array__check_magic(array);
     return array.capacity;
 }
 
-func array_size(array : Array*) : usize
+func array_size(array : Array const*) : usize
 {
     if (!array) { return 0; }
     array__check_magic(array);
     return array.size;
 }
 
+func array_elem_size(array : Array const*) : usize
+{
+    if (!array) { return 0; }
+    array__check_magic(array);
+    return array.elem_size;
+}
+
 // element count according to the array element size
-func array_length(array : Array*) : usize
+func array_length(array : Array const*) : usize
 {
     if (!array) { return 0; }
     array__check_magic(array);
@@ -114,7 +121,7 @@ func test_array()
     }
 }
 
-func array__check_magic(array : Array*)
+func array__check_magic(array : Array const*)
 {
     #assert(!array || array.magic == ArrayMagic);
 }
