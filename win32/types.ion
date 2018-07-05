@@ -1,8 +1,11 @@
+typedef BOOL = int;
 typedef DWORD = uint32;
 typedef HANDLE = void*;
 typedef UINT = uint;
 
 typedef LPCSTR = char const*;
+typedef LPSTR = char*;
 typedef LPWSTR = wchar*;
-typedef LPCTSTR = wchar const*;
+typedef LPCWSTR = wchar const*;
 typedef LPVOID = void*;
+typedef LPBOOL = BOOL*;

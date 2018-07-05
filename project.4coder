@@ -1,5 +1,5 @@
 version(1);
-project_name =  "Alps2018";
+project_name =  "Paltool";
 patterns = { 
  "*.ion", 
  "*.sh",
