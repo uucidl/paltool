@@ -14,7 +14,7 @@ struct PlatformPathListGenerator
   arena : MemoryArena;
 }
 
-func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerator
+func platform_find_all_files(root : uint8 const*) : PathListGenerator
 {
 	result := PathListGenerator{
       error = PathListError_InvalidRoot

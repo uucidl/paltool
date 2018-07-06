@@ -3,7 +3,7 @@ import libc {...}
 
 func main(argc : int, argv: char**) : int {
   for (argi := 1; argi < argc; argi++) {
-    paths := find_all_files_recursively((:uint8*)argv[argi]);
+    paths := find_all_files((:uint8*)argv[argi]);
     if (paths.error != PathListError_None) {
       printf("Error displaying %s: %d\n", argv[argi], paths.error);
     } else {

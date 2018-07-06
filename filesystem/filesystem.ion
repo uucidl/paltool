@@ -23,9 +23,9 @@ struct PathListGenerator
   resources : PlatformPathListGenerator*;
 }
   
-func find_all_files_recursively(root : uint8 const*) : PathListGenerator
+func find_all_files(root : uint8 const*) : PathListGenerator
 {
-  return platform_find_all_files_recursively(root);
+  return platform_find_all_files(root);
 }
 
 func next_paths(generator : PathListGenerator*)

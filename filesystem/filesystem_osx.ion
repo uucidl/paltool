@@ -55,7 +55,7 @@ func make_macos_path_list_generator(root_fd : int) : PlatformPathListGenerator
   };
 }
 
-func platform_find_all_files_recursively(root : uint8 const*) : PathListGenerator
+func platform_find_all_files(root : uint8 const*) : PathListGenerator
 {
   root_path := (:char const*)root;
   fd_or_error := open(root_path, O_RDONLY, 0);

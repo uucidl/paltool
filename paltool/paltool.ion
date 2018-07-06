@@ -48,7 +48,7 @@ func main(argc: int, argv: char**) : int
   printf("INFO: listing all files from root: %s\n", args.root_dir);
   
   image_tasks : ImageTask*; 
-  paths := find_all_files_recursively((:uint8*)args.root_dir);
+  paths := find_all_files((:uint8*)args.root_dir);
   while (paths.error == PathListError_None) {
     for (i := 0; i < paths.output.num_dirpaths; i++) {
       printf("[d]\t%s\n", paths.output.dirpaths[i]);
