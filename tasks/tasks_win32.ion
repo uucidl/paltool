@@ -1,0 +1,23 @@
+func platform_tasks_init()
+{
+}
+
+func platform_tasks_deinit()
+{
+}
+
+func platform_create_task(fn : TaskFunc, data : void*) : Task
+{
+	return {};
+}
+
+
+func platform_task_depends_on(task : Task, dependency : Task)
+{
+}
+
+// Schedule a task to run as soon as possible
+func platform_start_task(task : Task)
+{
+    #assert(false); // unimplemented
+}

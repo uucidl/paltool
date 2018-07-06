@@ -27,7 +27,7 @@ func task_depends_on(task : Task, dependency : Task) {
 
 // Schedule a task to run as soon as possible
 func start_task(task : Task) {
-  return platform_start_task(task);
+  platform_start_task(task);
 }
 
 // Comment originally by Per Vognsen:

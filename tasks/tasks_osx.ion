@@ -1,5 +1,6 @@
 import .dispatch {...}
 import libc { calloc, puts, realloc, memset, free }
+import datum {...}
 
 var submission_queue : Queue;
 var main_queue : Queue;
@@ -124,11 +125,3 @@ func puts_task(data : void*) {
   puts((:char*)data);
 }
 
-func bits(x : uint64, start : int, len : int) : uint64 {
-  return (x>>start) & ((uint64(1)<<len) - 1);
-}
-
-func sign_extend(x : uint64, num_bits : int) : uint64 {
-  return uint64(int64(x << (64-num_bits)) >> (64-num_bits));
-}
-	      
