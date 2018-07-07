@@ -4,23 +4,6 @@ import datum {...}
 
 var submission_queue : Queue;
 var main_queue : Queue;
-var registry : Tasks;
-
-struct TaskContent
-{
-  num_tasks_waited_on : int;
-  started : bool;
-  data : void*;
-  fn : TaskFunc;
-}
-
-struct Tasks
-{
-  cap : usize;
-  len : usize;
-  keys : uint64*;
-  values : TaskContent**;
-}
 
 func platform_tasks_init() {
   submission_queue = queue_create("tasks_submit", NULL);
@@ -34,9 +17,7 @@ func platform_tasks_deinit() {
   release({_dq=submission_queue});
   release({_dq=main_queue});
   submission_queue = NULL;
-  free(registry.keys);
-  free(registry.values);
-  registry = {};
+  registry_deinit();
 }
 
 struct NewTaskData
@@ -49,38 +30,7 @@ struct NewTaskData
 
 func _add_task_submission_task(opaque_data : void*) {
   data : NewTaskData* = opaque_data;
-  generation : uint16 = 1;
-  idx : usize = -1;
-  for (i:=0; i<registry.len; i++) {
-    if (!registry.values[i].fn) {
-      idx = i;
-      generation = 1 + bits(registry.keys[i], 60, 4);
-    }
-  }
-  if (idx == -1) {
-    idx = registry.len;
-    if (registry.len + 1 > registry.cap) {
-      old_cap := registry.cap;
-      needed_cap := registry.len + 1;
-      next_cap := 2*old_cap;
-      new_cap := needed_cap>next_cap? needed_cap:next_cap;
-      #assert(registry.len <= new_cap);
-      registry.keys = realloc(registry.keys, new_cap*sizeof(registry.keys[0]));
-      memset(&registry.keys[registry.len], 0, (new_cap - old_cap)*sizeof(registry.keys[0]));
-      registry.values = realloc(registry.values, new_cap * sizeof(registry.values[0]));
-      memset(&registry.values[registry.len], 0, (new_cap - old_cap)*sizeof(registry.values[0]));
-      registry.cap = new_cap;
-    }
-    registry.len += 1;
-  }
-
-  #assert(idx < (UINT64_MAX<<4));
-  task := Task{ id = (uint64(generation)<<60) + idx };
-  registry.keys[idx] = task.id;
-  task_content : TaskContent* = calloc(1, sizeof(TaskContent));
-  *task_content = { data=data.data, fn=data.fn };
-  registry.values[idx] = task_content;
-  data.task = task;
+  data.task = registry_add(data.data, data.fn);
 }
 
 // Create a new task and returns its handle
@@ -99,14 +49,6 @@ func platform_task_depends_on(task : Task, dependency : Task) {
   #assert(false);
 }
 
-func get_content(task : Task) : TaskContent* {
-    // @todo: thread safety with submission
-  idx := bits(task.id, 0, 60);
-  #assert(idx < registry.len); // invalid handle
-  #assert(registry.keys[idx] == task.id); // invalid handle
-  return registry.values[idx];
-}
-
 func run_task_task(opaque_data : void*) {
   data : TaskContent* = opaque_data;
   data.fn(data.data);
@@ -116,7 +58,7 @@ func run_task_task(opaque_data : void*) {
 // Schedule a task to run as soon as possible
 func platform_start_task(task : Task) {
   // @todo: thread safety with submission
-  content := get_content(task);
+  content := registry_get(task);
   content.started = true;
   async(main_queue, content, run_task_task);
 }

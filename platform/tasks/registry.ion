@@ -1,0 +1,82 @@
+import datum{...}
+import libc {
+    libc_calloc = calloc,
+    libc_free = free,
+    libc_memset = memset,
+    libc_realloc = realloc,
+}
+
+var registry : Tasks;
+
+struct TaskContent
+{
+  num_tasks_waited_on : int;
+  started : bool;
+  data : void*;
+  fn : TaskFunc;
+}
+
+struct Tasks
+{
+  cap : usize;
+  len : usize;
+  keys : uint64*;
+  values : TaskContent**;
+}
+
+func registry_get(task : Task) : TaskContent*
+{
+  idx := bits(task.id, 0, 60);
+  #assert(idx < registry.len); // invalid handle
+  #assert(registry.keys[idx] == task.id); // invalid handle
+  return registry.values[idx];
+}
+
+func registry_add(task_data : void*, task_fn : TaskFunc) : Task
+{
+  generation : uint16 = 1;
+  idx : usize = -1;
+  for (i:=0; i<registry.len; i++) {
+    if (!registry.values[i].fn) {
+      idx = i;
+      generation = 1 + bits(registry.keys[i], 60, 4);
+    }
+  }
+  if (idx == -1) {
+    idx = registry.len;
+    if (registry.len + 1 > registry.cap) {
+      old_cap := registry.cap;
+      needed_cap := registry.len + 1;
+      next_cap := 2*old_cap;
+      new_cap := needed_cap>next_cap? needed_cap:next_cap;
+      #assert(registry.len <= new_cap);
+      registry.keys = libc_realloc(registry.keys, new_cap*sizeof(registry.keys[0]));
+      libc_memset(&registry.keys[registry.len], 0, (new_cap - old_cap)*sizeof(registry.keys[0]));
+      registry.values = libc_realloc(registry.values, new_cap * sizeof(registry.values[0]));
+      libc_memset(&registry.values[registry.len], 0, (new_cap - old_cap)*sizeof(registry.values[0]));
+      registry.cap = new_cap;
+    }
+    registry.len += 1;
+  }
+
+  #assert(idx < (UINT64_MAX<<4));
+  task := Task{ id = (uint64(generation)<<60) + idx };
+  registry.keys[idx] = task.id;
+  task_content : TaskContent* = libc_calloc(1, sizeof(TaskContent));
+  *task_content = { data=task_data, fn=task_fn };
+  registry.values[idx] = task_content;
+  return task;
+}
+
+func registry_deinit()
+{
+  for(i:=0; i<registry.len; i++) {
+      if (registry.keys[i]) {
+          libc_free(registry.values[i]);
+      }
+  }
+  libc_free(registry.keys);
+  libc_free(registry.values);
+  registry = {};
+}
+
