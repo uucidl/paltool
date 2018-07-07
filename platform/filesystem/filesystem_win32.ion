@@ -22,7 +22,6 @@ func platform_find_all_files(root : uint8 const*) : PathListGenerator
 
 	query_str : wchar*;
     necessary_wchars := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, NULL, 0);
-    buf_cat_wchars_from_zstr_ascii(&query_str, "\\\\?\\");
     query_str = buf_fit(query_str, sizeof(int16), necessary_wchars + 1);
 	wrote := MultiByteToWideChar(CP_UTF8, 0, (:char const*)root, -1, &query_str[buf_len(query_str)], buf_cap(query_str)-buf_len(query_str));
     if (wrote > 1)
@@ -35,8 +34,6 @@ func platform_find_all_files(root : uint8 const*) : PathListGenerator
     } else {
       buf_cat_wchars_from_zstr_ascii(&query_str, &suffix[0]);
     }
-
-    printf("hello <%ls>\n\n", query_str);
 
     // Open query and get info about first file:
     one_file : WIN32_FIND_DATAW;
