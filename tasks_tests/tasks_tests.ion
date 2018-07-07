@@ -1,4 +1,4 @@
-import tasks {...}
+import platform.tasks {...}
 
 func main(argc : int, argv: char**) : int {
   return 1; // @todo unimplemented

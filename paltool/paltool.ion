@@ -1,11 +1,11 @@
 var USAGE = "<paltool> [a|b] <root-directory>";
 
-import datum { ... }
-import filesystem { ... }
-import libc { ... }
-import tasks { ... }
 import codecs { ... }
 import containers { ... }
+import datum { ... }
+import libc { ... }
+import platform.filesystem { ... }
+import platform.tasks { ... }
 
 enum Mode
 {
