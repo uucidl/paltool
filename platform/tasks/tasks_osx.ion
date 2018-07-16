@@ -1,6 +1,7 @@
 import .dispatch {...}
 import libc { calloc, puts, realloc, memset, free }
 import datum {...}
+import platform.bsd { sysctlbyname }
 
 var submission_queue : Queue;
 var main_queue : Queue;
@@ -67,3 +68,14 @@ func puts_task(data : void*) {
   puts((:char*)data);
 }
 
+
+func _get_num_physical_cpus() : int
+{
+  count : int;
+  count_size := sizeof(count);
+  rc := bsd.sysctlbyname("hw.physicalcpu_max", &count, &count_size, NULL, 0);
+  if (rc == 0) { return count; }
+  rc = bsd.sysctlbyname("hw.ncpu", &count, &count_size, NULL, 0);
+  if (rc == 0) { return count; }
+  return 0;
+}

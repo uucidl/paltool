@@ -1,6 +1,8 @@
 // @note: tested on osx,x64 only
 
 #foreign(header="<sys/errno.h>")
+#foreign(header="<sys/types.h>")
+#foreign(header="<sys/sysctl.h>")
 
 @foreign("errno")
 var errno : int;
@@ -144,3 +146,6 @@ func open(path : char const*, oflags : int, ...) : int;
 
 @foreign("close")
 func close(fildes : int) : int;
+
+@foreign("sysctlbyname")
+func sysctlbyname(name : char const*, oldp : void*, oldlenp : usize*, newp : void const*, newlen : usize) : int;

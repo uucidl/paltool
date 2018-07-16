@@ -1,5 +1,8 @@
 import platform.tasks {...}
+import libc {...}
 
 func main(argc : int, argv: char**) : int {
+  num_cpus := _get_num_physical_cpus();
+  printf("num_cpus\t%d\n", num_cpus);
   return 1; // @todo unimplemented
 }
