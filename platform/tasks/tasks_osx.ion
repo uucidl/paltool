@@ -68,7 +68,8 @@ func puts_task(data : void*) {
   puts((:char*)data);
 }
 
-
+// @todo introduce a c_size to represent size_t in bsd/posix etc apis
+// since usize isn't necessarily compatible without compiler warnings
 func _get_num_physical_cpus() : int
 {
   count : int;
