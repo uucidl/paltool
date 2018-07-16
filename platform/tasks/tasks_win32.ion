@@ -1,3 +1,129 @@
+/*
+
+Context
+- user wants to maximize CPU core utilization,
+- user has many independent chunks of computations,
+- tasks are >=1ms worth of CPU processing,
+- tasks don't do general I/O, only CPU + Mem
+
+Value
+- duration(task_processing(tasks, core_count)) < duration(serial_processing(tasks))
+  when core_count > 1
+- core_count_1 > core_count_0 => duration(task_processing(tasks, core_count_1)) 
+  < duration(task_processing(tasks, core_count_0))
+
+Cost  
+- overhead = duration(task_processing(tasks, core_count)) - duration(serial_procesing(tasks))/core_count
+
+Data
+
+ptr     : input/output memory for the task
+fn      : task computation as a function pointer
+task_id : identity of the task
+
+Transform
+
+| Registry | Ptr | Fn | Task_id | Status |
++----------+-----+----+---------+--------+
+           | ... | ...| ...     | ...... |
+
+submit: {ptr, fn} -> {task_id}
+
+| Registry | Ptr | Fn | Task_id | Status |
++----------+-----+----+---------+--------+
+           | ... | ...| ...     | ...... |
+           | ptr | fn | task_id | init   |
+           | ... | ...| ...     | ...... |
+
+start: {task_id} -> 
+
+| Registry | Ptr | Fn | Task_id | Status | Assigned Core |
++----------+-----+----+---------+--------+---------------|
+           | ... | ...| ...     | ...... | ............. |
+           | ptr | fn | task_id | start  | Core k        |
+           | ... | ...| ...     | ...... | ............. |
+k <= core_count
+k chosen how?
+
+| Core 0 | Task_id | Status |
++--------+---------+--------+
+         | ...     | ...    |
+
+| Core k | Task_id | Status |
++--------+---------+--------+
+         | task_id | init   |
+         | ...     | ...    |
+
+accept_started_task: {registry, core} ->
+
+k = core
+
+| Core k | Task_id | Status |
++--------+---------+--------+
+         | task_id | init   |
+         | ...     | ...    |
+
+becomes
+
+| Core k | Task_id | Status |
++--------+---------+--------+
+         | task_id | started|
+         | ...     | ...    |
+
+and the core execution thread k performs fn(data)
+
+what if there is no task ready for core k?
+attempt to accept a task of another core:
+
+| Core l | Task_id | Status |
++--------+---------+--------+
+         | task_id | stolen |
+         | ...     | ...    |
+
+| Core k | Task_id | Status |
++--------+---------+--------+
+         | task_id | started|
+         | ...     | ...    |
+
+clean_done_task: {registry, core} ->
+k = core
+
+| Core k | Task_id | Status |
++--------+---------+--------+
+         | task_id | started|
+         | ...     | ...    |
+
+becomes
+
+| Core k | Task_id | Status |
++--------+---------+--------+
+         | ...     | ...    |
+
+also stolen tasks can be removed
+
+and the registry:
+| Registry | Ptr | Fn | Task_id | Status | Assigned Core |
++----------+-----+----+---------+--------+---------------|
+           | ... | ...| ...     | ...... | ............. |
+           | xxx | xx | xxxxxxx | xxxxxx | xxxxxxxxxxxxx |
+           | ... | ...| ...     | ...... | ............. |
+
+How to kick-off dependent tasks?
+
+
+Plan
+
+- create one worker thread per core
+  + @todo: obtain number of physical cores
+  + @todo: worker thread main loop + win32 creation code
+- transport tasks to worker threads
+  + 1 task processed for every task started
+  + what's acceptable latency? best-effort? Next available core should pick-up the work.
+
+*/
+
+
+
 func platform_tasks_init()
 {
 }
