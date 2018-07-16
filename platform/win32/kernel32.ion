@@ -13,6 +13,27 @@ struct FILETIME
   dwLowDateTime, dwHighDateTime : DWORD;
 }
 
+@foreign("SYSTEM_INFO")
+struct SYSTEM_INFO
+{
+  union {
+    dwOemId : DWORD;
+    struct {
+      wProcessorArchitecture : WORD;
+      wReserved : WORD;
+    }
+  }
+  dwPageSize : DWORD;
+  lpMinimumApplicationAddress : LPVOID;
+  lpMaximumApplicationAddress : LPVOID;
+  dwActiveProcessorMask : DWORD_PTR;
+  dwNumberOfProcessors : DWORD;
+  dwProcessorType : DWORD;
+  dwAllocationGranularity : DWORD;
+  wProcessorLevel : WORD;
+  wProcessorRevision : WORD;
+}
+
 @foreign("WIN32_FIND_DATAW")
 struct WIN32_FIND_DATAW
 {
@@ -58,6 +79,9 @@ func FindNextFileW(
   hFindFile : HANDLE,
   lpFindFileData : WIN32_FIND_DATAW*
 ) : BOOL;
+
+@foreign("GetSystemInfo")
+func GetSystemInfo(lpSystemInfo : SYSTEM_INFO*);
 
 @foreign("MultiByteToWideChar")
 func MultiByteToWideChar(

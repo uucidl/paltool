@@ -1,3 +1,8 @@
+import platform.win32 { 
+  SYSTEM_INFO = SYSTEM_INFO,
+  GetSystemInfo = GetSystemInfo,
+}
+
 /*
 
 Context
@@ -146,4 +151,11 @@ func platform_task_depends_on(task : Task, dependency : Task)
 func platform_start_task(task : Task)
 {
     #assert(false); // unimplemented
+}
+
+func _get_num_logical_cpus() : int
+{
+  system_info : SYSTEM_INFO;
+  GetSystemInfo(&system_info);
+  return system_info.dwNumberOfProcessors;
 }
