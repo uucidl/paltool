@@ -20,6 +20,17 @@ func buf_push(opaque_buf_ptr : void*, elem : void*, elem_size : usize)
   buf__add_n(*buf_ptr, elem, elem_size, 1);
 }
 
+func buf_alloc_at(opaque_buf_ptr : void*, elem_size : usize, elem_idx : usize) : void*
+{
+  buf_ptr := (:void**)opaque_buf_ptr;
+  hdr := buf_hdr_mutable(*buf_ptr);
+  if (elem_idx >= array_length(hdr)) {
+    hdr = array_alloc(hdr, 1+elem_idx, elem_size);
+    *buf_ptr = &hdr.bytes[0];
+  }
+  return &hdr.bytes[elem_size * elem_idx];
+}
+
 func buf_free(opaque_buf : void*)
 {
   array_reset(buf_hdr_mutable(opaque_buf));

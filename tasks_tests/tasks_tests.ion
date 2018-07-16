@@ -1,8 +1,28 @@
 import platform.tasks {...}
 import libc {...}
 
+func dummy_task_fn(data : void*)
+{
+  #assert(false); // don't call me
+}
+
+func test_unstarted()
+{
+  unstarted : UnstartedTasks;
+
+  id := unstarted_create(&unstarted, {fn=dummy_task_fn});
+  #assert(id.value == pack_id(1, 1).value);
+  unstarted_discard(&unstarted, id);
+  id = unstarted_create(&unstarted, {fn=dummy_task_fn});
+  #assert(id.value == pack_id(1, 2).value);
+  id = unstarted_create(&unstarted, {fn=dummy_task_fn});
+  #assert(id.value == pack_id(2, 1).value);
+
+}
+
 func main(argc : int, argv: char**) : int {
   num_cpus := _get_num_logical_cpus();
   printf("num_logical_cpus\t%d\n", num_cpus);
+  test_unstarted();
   return 0;
 }

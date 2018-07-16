@@ -1,4 +1,5 @@
-import datum{...}
+import datum {...}
+import containers {...}
 import libc {
     libc_calloc = calloc,
     libc_free = free,
@@ -80,3 +81,85 @@ func registry_deinit()
   registry = {};
 }
 
+
+var unstarted_tasks : UnstartedTasks;
+
+const NULL_TASKID = uint64(-1);
+
+struct TaskId
+{
+  value : uint64;
+}
+
+struct TaskContent2
+{
+  data : void*;
+  fn : TaskFunc;
+}
+
+struct UnstartedTask
+{
+  id : TaskId;
+  content : TaskContent2;
+  task_being_blocked : TaskId;
+}
+
+struct UnstartedTasks
+{
+  cap : usize;
+  buf : UnstartedTask*;
+}
+
+func unpack_generation_from_id(id : TaskId) : int
+{
+  return bits(id.value, 0, 4);
+}
+
+func unpack_idx_from_id(id : TaskId) : uint64
+{
+  return bits(id.value, 4, 60);
+}
+
+func pack_id(idx : usize, generation : int) : TaskId
+{
+  return { value = bits(idx, 0, 60)<<4 | bits(generation, 0, 4) };
+}
+
+func unstarted_create(self : UnstartedTasks*, content : TaskContent2) : TaskId
+{
+  // allocate null task
+  buf_alloc_at(&self.buf, sizeof(self.buf[0]), 0);
+
+  n := buf_len(self.buf);
+  idx := n;
+  for (i:=1; i<n; i++) {
+    if (!self.buf[i].content.fn) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx == n) {
+    buf_alloc_at(&self.buf, sizeof(self.buf[0]), idx);
+    self.cap = buf_len(self.buf);
+  }
+  #assert(idx < buf_len(self.buf));
+  unstarted_task := &self.buf[idx];
+  *unstarted_task = {
+    id = pack_id(idx, unpack_generation_from_id(unstarted_task.id)+1),
+    content = content,
+  };
+  return unstarted_task.id;
+}
+
+func check_valid_id(self : UnstartedTasks*, id : TaskId)
+{
+  idx := unpack_idx_from_id(id);
+  #assert(idx < buf_len(self.buf));
+  #assert(id.value == self.buf[idx].id.value);
+}
+
+func unstarted_discard(self : UnstartedTasks*, id : TaskId)
+{
+  check_valid_id(self, id);
+  self.buf[unpack_idx_from_id(id)].content.fn = NULL;
+}
