@@ -128,7 +128,7 @@ func make_attrlist(proto : AttrList) : AttrList
 }
 
 @foreign("getattrlistbulk")
-func getattrlistbulk(dirfd : int, attrList : AttrList*, attrBuf : void*, attrBufSize : usize, options : uint64) : int;
+func getattrlistbulk(dirfd : int, attrList : AttrList*, attrBuf : void*, attrBufSize : bsd_size, options : uint64) : int;
 
 #foreign(header="<sys/fcntl.h>")
 
@@ -148,4 +148,4 @@ func open(path : char const*, oflags : int, ...) : int;
 func close(fildes : int) : int;
 
 @foreign("sysctlbyname")
-func sysctlbyname(name : char const*, oldp : void*, oldlenp : usize*, newp : void const*, newlen : usize) : int;
+func sysctlbyname(name : char const*, oldp : void*, oldlenp : bsd_size*, newp : void const*, newlen : bsd_size) : int;
