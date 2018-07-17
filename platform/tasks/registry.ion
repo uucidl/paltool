@@ -110,6 +110,11 @@ struct UnstartedTasks
   buf : UnstartedTask*;
 }
 
+func TaskId_compare(a : TaskId const, b : TaskId const) : int
+{
+  return a.value<b.value? -1 : (b.value<a.value? +1 : 0);
+}
+
 func unpack_generation_from_id(id : TaskId) : int
 {
   return bits(id.value, 0, 4);
@@ -162,4 +167,11 @@ func unstarted_discard(self : UnstartedTasks*, id : TaskId)
 {
   check_valid_id(self, id);
   self.buf[unpack_idx_from_id(id)].content.fn = NULL;
+}
+
+func unstarted_depends_on(self : UnstartedTasks*, id : TaskId, predecessor_id : TaskId)
+{
+  check_valid_id(self, id);
+  check_valid_id(self, predecessor_id);
+  self.buf[unpack_idx_from_id(predecessor_id)].task_being_blocked = id;
 }

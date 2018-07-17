@@ -15,9 +15,15 @@ func test_unstarted()
   unstarted_discard(&unstarted, id);
   id = unstarted_create(&unstarted, {fn=dummy_task_fn});
   #assert(id.value == pack_id(1, 2).value);
+  a := id;
+
   id = unstarted_create(&unstarted, {fn=dummy_task_fn});
   #assert(id.value == pack_id(2, 1).value);
 
+  #assert(unstarted.buf[1].task_being_blocked.value == 0);
+  unstarted_depends_on(&unstarted, id, a);
+  unstarted_depends_on(&unstarted, id, a);
+  #assert(TaskId_compare(unstarted.buf[1].task_being_blocked, id) == 0);
 }
 
 func main(argc : int, argv: char**) : int {
