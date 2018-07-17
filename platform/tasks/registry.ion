@@ -23,6 +23,7 @@ struct Tasks
   len : usize;
   keys : uint64*;
   values : TaskContent**;
+  unstarted : UnstartedTasks;
 }
 
 func registry_get(task : Task) : TaskContent*
@@ -78,13 +79,12 @@ func registry_deinit()
   }
   libc_free(registry.keys);
   libc_free(registry.values);
+  buf_free(registry.unstarted.buf);
   registry = {};
 }
 
 
 var unstarted_tasks : UnstartedTasks;
-
-const NULL_TASKID = uint64(-1);
 
 struct TaskId
 {
