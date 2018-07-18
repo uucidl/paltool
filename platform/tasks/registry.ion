@@ -7,91 +7,15 @@ import libc {
     libc_realloc = realloc,
 }
 
-var registry : Tasks;
-
-struct TaskContent
-{
-  num_tasks_waited_on : int;
-  started : bool;
-  data : void*;
-  fn : TaskFunc;
-}
-
-struct Tasks
-{
-  cap : usize;
-  len : usize;
-  keys : uint64*;
-  values : TaskContent**;
-  unstarted : UnstartedTasks;
-}
-
-func registry_get(task : Task) : TaskContent*
-{
-  idx := bits(task.id, 0, 60);
-  #assert(idx < registry.len); // invalid handle
-  #assert(registry.keys[idx] == task.id); // invalid handle
-  return registry.values[idx];
-}
-
-func registry_add(task_data : void*, task_fn : TaskFunc) : Task
-{
-  generation : uint16 = 1;
-  idx : usize = -1;
-  for (i:=0; i<registry.len; i++) {
-    if (!registry.values[i].fn) {
-      idx = i;
-      generation = 1 + bits(registry.keys[i], 60, 4);
-    }
-  }
-  if (idx == -1) {
-    idx = registry.len;
-    if (registry.len + 1 > registry.cap) {
-      old_cap := registry.cap;
-      needed_cap := registry.len + 1;
-      next_cap := 2*old_cap;
-      new_cap := needed_cap>next_cap? needed_cap:next_cap;
-      #assert(registry.len <= new_cap);
-      registry.keys = libc_realloc(registry.keys, new_cap*sizeof(registry.keys[0]));
-      libc_memset(&registry.keys[registry.len], 0, (new_cap - old_cap)*sizeof(registry.keys[0]));
-      registry.values = libc_realloc(registry.values, new_cap * sizeof(registry.values[0]));
-      libc_memset(&registry.values[registry.len], 0, (new_cap - old_cap)*sizeof(registry.values[0]));
-      registry.cap = new_cap;
-    }
-    registry.len += 1;
-  }
-
-  #assert(idx < (UINT64_MAX<<4));
-  task := Task{ id = (uint64(generation)<<60) + idx };
-  registry.keys[idx] = task.id;
-  task_content : TaskContent* = libc_calloc(1, sizeof(TaskContent));
-  *task_content = { data=task_data, fn=task_fn };
-  registry.values[idx] = task_content;
-  return task;
-}
+var unstarted_tasks : UnstartedTasks;
 
 func registry_deinit()
 {
-  for(i:=0; i<registry.len; i++) {
-      if (registry.keys[i]) {
-          libc_free(registry.values[i]);
-      }
-  }
-  libc_free(registry.keys);
-  libc_free(registry.values);
-  buf_free(registry.unstarted.buf);
-  registry = {};
+  buf_free(unstarted_tasks.buf);
+  unstarted_tasks = {};
 }
 
-
-var unstarted_tasks : UnstartedTasks;
-
-struct TaskId
-{
-  value : uint64;
-}
-
-struct TaskContent2
+struct TaskContent
 {
   data : void*;
   fn : TaskFunc;
@@ -99,9 +23,9 @@ struct TaskContent2
 
 struct UnstartedTask
 {
-  id : TaskId;
-  content : TaskContent2;
-  task_being_blocked : TaskId;
+  id : Task;
+  content : TaskContent;
+  task_being_blocked : Task;
 }
 
 struct UnstartedTasks
@@ -110,27 +34,27 @@ struct UnstartedTasks
   buf : UnstartedTask*;
 }
 
-func TaskId_compare(a : TaskId const, b : TaskId const) : int
+func Task_compare(a : Task const, b : Task const) : int
 {
   return a.value<b.value? -1 : (b.value<a.value? +1 : 0);
 }
 
-func unpack_generation_from_id(id : TaskId) : int
+func unpack_generation_from_id(id : Task) : int
 {
   return bits(id.value, 0, 4);
 }
 
-func unpack_idx_from_id(id : TaskId) : uint64
+func unpack_idx_from_id(id : Task) : uint64
 {
   return bits(id.value, 4, 60);
 }
 
-func pack_id(idx : usize, generation : int) : TaskId
+func pack_id(idx : usize, generation : int) : Task
 {
   return { value = bits(idx, 0, 60)<<4 | bits(generation, 0, 4) };
 }
 
-func unstarted_create(self : UnstartedTasks*, content : TaskContent2) : TaskId
+func unstarted_create(self : UnstartedTasks*, content : TaskContent) : Task
 {
   // allocate null task
   buf_alloc_at(&self.buf, sizeof(self.buf[0]), 0);
@@ -156,20 +80,23 @@ func unstarted_create(self : UnstartedTasks*, content : TaskContent2) : TaskId
   return unstarted_task.id;
 }
 
-func check_valid_id(self : UnstartedTasks*, id : TaskId)
+func check_valid_id(self : UnstartedTasks*, id : Task)
 {
   idx := unpack_idx_from_id(id);
   #assert(idx < buf_len(self.buf));
   #assert(id.value == self.buf[idx].id.value);
 }
 
-func unstarted_discard(self : UnstartedTasks*, id : TaskId)
+func unstarted_discard(self : UnstartedTasks*, id : Task) : TaskContent
 {
   check_valid_id(self, id);
-  self.buf[unpack_idx_from_id(id)].content.fn = NULL;
+  unstarted := &self.buf[unpack_idx_from_id(id)];
+  content := unstarted.content;
+  unstarted.content.fn = NULL; // mark as discarded
+  return content;
 }
 
-func unstarted_depends_on(self : UnstartedTasks*, id : TaskId, predecessor_id : TaskId)
+func unstarted_depends_on(self : UnstartedTasks*, id : Task, predecessor_id : Task)
 {
   check_valid_id(self, id);
   check_valid_id(self, predecessor_id);

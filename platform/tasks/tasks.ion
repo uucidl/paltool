@@ -1,7 +1,6 @@
 struct Task
 {
-  new_id : uint64;
-  id : uint64;
+  value : uint64;
 }
 
 typedef TaskFunc = func(data : void*);

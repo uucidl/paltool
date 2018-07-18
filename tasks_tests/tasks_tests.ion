@@ -10,20 +10,22 @@ func test_unstarted()
 {
   unstarted : UnstartedTasks;
 
-  id := unstarted_create(&unstarted, {fn=dummy_task_fn});
+  id := unstarted_create(&unstarted, {data=(:void*)1, fn=dummy_task_fn});
   #assert(id.value == pack_id(1, 1).value);
-  unstarted_discard(&unstarted, id);
-  id = unstarted_create(&unstarted, {fn=dummy_task_fn});
+  original := unstarted_discard(&unstarted, id);
+  #assert(original.data == (:void*)1);
+  #assert(intptr(original.fn) == intptr(dummy_task_fn)); // @todo report ion defect, casts should not be needed
+  id = unstarted_create(&unstarted, {data=(:void*)2, fn=dummy_task_fn});
   #assert(id.value == pack_id(1, 2).value);
   a := id;
 
-  id = unstarted_create(&unstarted, {fn=dummy_task_fn});
+  id = unstarted_create(&unstarted, {data=(:void*)3, fn=dummy_task_fn});
   #assert(id.value == pack_id(2, 1).value);
 
   #assert(unstarted.buf[1].task_being_blocked.value == 0);
   unstarted_depends_on(&unstarted, id, a);
   unstarted_depends_on(&unstarted, id, a);
-  #assert(TaskId_compare(unstarted.buf[1].task_being_blocked, id) == 0);
+  #assert(Task_compare(unstarted.buf[1].task_being_blocked, id) == 0);
 }
 
 func main(argc : int, argv: char**) : int {

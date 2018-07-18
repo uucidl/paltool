@@ -31,12 +31,7 @@ struct NewTaskData
 
 func _add_task_submission_task(opaque_data : void*) {
   data : NewTaskData* = opaque_data;
-  id := unstarted_create(&registry.unstarted, {data=data.data, fn=data.fn});
-  legacy := registry_add(data.data, data.fn);
-  data.task = Task{
-    new_id = id.value,
-    id = legacy.id,
-  };
+  data.task = unstarted_create(&unstarted_tasks, {data=data.data, fn=data.fn});
 }
 
 // Create a new task and returns its handle
@@ -52,24 +47,23 @@ func platform_create_task(fn : TaskFunc, data : void*) : Task {
 
 // Mark a dependency between two tasks
 func platform_task_depends_on(task : Task, dependency : Task) {
-  unstarted_depends_on(&registry.unstarted, {task.new_id}, {dependency.new_id});
+  unstarted_depends_on(&unstarted_tasks, task, dependency);
 }
 
 func run_task_task(opaque_data : void*) {
   data : TaskContent* = opaque_data;
   data.fn(data.data);
   data.fn = NULL; // mark task has completed.
+  free(data);
 }
 
 // Schedule a task to run as soon as possible
 func platform_start_task(task : Task) {
   // @todo: thread safety with submission
-  // @todo: get content from unstarted task, and remove legacy registry
-  // content := unstarted_get(&registry.unstarted, {task.new_id});
-  unstarted_discard(&registry.unstarted, {task.new_id});
-  
-  content_ptr := registry_get(task);
-  content_ptr.started = true;
+  content := unstarted_discard(&unstarted_tasks, task);
+  content_ptr := &content;
+  content_ptr = calloc(1, sizeof(content_ptr[0]));
+  *content_ptr = content;
   async(main_queue, content_ptr, run_task_task);
 }
 
