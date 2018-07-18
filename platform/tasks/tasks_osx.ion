@@ -71,13 +71,13 @@ func puts_task(data : void*) {
   puts((:char*)data);
 }
 
-// @todo introduce a c_size to represent size_t in bsd/posix etc apis
-// since usize isn't necessarily compatible without compiler warnings
 func _get_num_logical_cpus() : int
 {
   count : int;
   count_size := (:bsd_size) sizeof(count);
-  rc := bsd.sysctlbyname("hw.logicalcpu", &count, &count_size, NULL, 0);
+  rc := bsd.sysctlbyname("hw.activecpu", &count, &count_size, NULL, 0);
+  if (rc == 0) { return count; }
+  rc = bsd.sysctlbyname("hw.logicalcpu", &count, &count_size, NULL, 0);
   if (rc == 0) { return count; }
   rc = bsd.sysctlbyname("hw.ncpu", &count, &count_size, NULL, 0);
   if (rc == 0) { return count; }
