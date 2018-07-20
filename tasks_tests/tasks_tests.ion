@@ -28,9 +28,25 @@ func test_unstarted()
   #assert(Task_compare(unstarted.buf[1].task_being_blocked, id) == 0);
 }
 
+func test_thread_work_queue()
+{
+  queue : ThreadWorkQueue;
+  #assert(0 == thread_work_queue_find_index_first_ready(&queue));
+
+  pending_tasks_add(&queue.pending_tasks, {1}, {0}, {fn=dummy_task_fn});
+  pending_tasks_add(&queue.pending_tasks, {2}, {1}, {fn=dummy_task_fn});
+  pending_tasks_add(&queue.pending_tasks, {3}, {0}, {fn=dummy_task_fn});
+  #assert(3 == queue.pending_tasks.len);
+  #assert(0 == thread_work_queue_find_index_first_ready(&queue));
+
+  blockers_map(&queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
+  #assert(1 == thread_work_queue_find_index_first_ready(&queue));
+}
+
 func main(argc : int, argv: char**) : int {
   num_cpus := _get_num_logical_cpus();
   printf("num_logical_cpus\t%d\n", num_cpus);
   test_unstarted();
+  test_thread_work_queue();
   return 0;
 }

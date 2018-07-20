@@ -1,3 +1,5 @@
+// all api functions here must be called from the same thread.
+
 struct Task
 {
   value : uint64;
