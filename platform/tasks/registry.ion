@@ -1,11 +1,6 @@
 import datum {...}
 import containers {...}
-import libc {
-    libc_calloc = calloc,
-    libc_free = free,
-    libc_memset = memset,
-    libc_realloc = realloc,
-}
+import libc {}
 
 var unstarted_tasks : UnstartedTasks;
 var threads : Threads;
@@ -145,12 +140,12 @@ func threads_init(self : Threads*, num_threads : usize)
 {
   #assert(num_threads < 64);
   self.num_threads = num_threads;
-  self.work_queues = libc_calloc(self.num_threads, sizeof(self.work_queues[0]));
+  self.work_queues = libc.calloc(self.num_threads, sizeof(self.work_queues[0]));
 }
 
 func threads_deinit(self : Threads*)
 {
-  libc_free(self.work_queues);
+  libc.free(self.work_queues);
   *self = {};
 }
 
@@ -176,31 +171,67 @@ func pending_tasks_add(dest : PendingTasks*, task : Task, blocked_task : Task, c
   dest.cap = dest.len;
 }
 
+// valid range: [first,num_elems)
+// post: [first,num_elems-1) <- [first+1,num_elems) 
+func elemshift_left(first : void*, elem_size : usize, num_elems : usize)
+{
+  libc.memmove(first, (:uint8*)first+elem_size, elem_size * (num_elems - 1));
+}
+
+func pending_tasks_remove(dest : PendingTasks*, idx : usize)
+{
+  #assert(idx < dest.len);
+  elemshift_left(&dest.tasks[idx], sizeof(dest.tasks[0]), dest.len - idx);
+  elemshift_left(&dest.blocks[idx], sizeof(dest.blocks[0]), dest.len - idx);
+  elemshift_left(&dest.contents[idx], sizeof(dest.contents[0]), dest.len - idx);
+  dest.len--;
+  containers.buf_hdr_mutable(dest.tasks).size -= sizeof(dest.tasks[0]);
+  containers.buf_hdr_mutable(dest.blocks).size -= sizeof(dest.blocks[0]);
+  containers.buf_hdr_mutable(dest.contents).size -= sizeof(dest.contents[0]);
+}
+
 // @todo binary search in blockers
 // @todo clean-up old blockers (partition and put at the end)
 
 func blockers_put(blockers_ptr : TaskBlocker**, task : Task, has_blockers_bitmask : uint64)
 {
   blockers : TaskBlocker const* const = *blockers_ptr;
-  idx := buf_len(blockers);
-  for (i:=0; i<buf_len(blockers); i++) {
+  n := buf_len(blockers);
+  last_free_below_idx := 0;
+  last_below_idx := 0;
+  insert_at_idx := int(n);
+  for (i:=0; i<n; i++) {
     cmp := Task_compare(blockers[i].task, task);
-    if (cmp < 0) { continue; }
     if (cmp == 0) {
-      idx = i;
+      insert_at_idx = i;
+      break; 
+    } else if (cmp > 0) {
+      break;
     }
-    break;
+    is_free := blockers[i].blockers_exist_in_thread == 0;
+    if (is_free) { last_free_below_idx = i + 1; }
+    last_below_idx = i + 1; 
   }
-  blocker : TaskBlocker* = buf_alloc_at(blockers_ptr, sizeof(blockers[0]), idx);
+  if (insert_at_idx == n) {
+    if (last_free_below_idx > 0) {
+      insert_at_idx = last_free_below_idx - 1;
+    } else if (last_below_idx > 0) {
+      insert_at_idx = last_below_idx;
+    }
+  }
+  blocker : TaskBlocker* = buf_alloc_at(blockers_ptr, sizeof(blockers[0]), insert_at_idx);
   blocker.task = task;
   blocker.blockers_exist_in_thread |= has_blockers_bitmask;
 }
 
-func blockers_map(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64, num_tasks : usize, tasks : Task*, blocked_tasks : Task*)
+func blockers_update(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64, num_tasks : usize, tasks : Task*, blocked_tasks : Task*)
 {
   // reset all
-  for (i:=0; i<buf_len(dest.blockers); i++) {
-    dest.blockers[i].blockers_exist_in_thread &= ~has_blockers_bitmask;
+  {
+    n:=buf_len(dest.blockers);
+    for (i:=0; i<n; i++) {
+      dest.blockers[i].blockers_exist_in_thread &= ~has_blockers_bitmask;
+    }
   }
   for (i:=0; i<dest.pending_tasks.len; i++) {
     task := dest.pending_tasks.tasks[i];

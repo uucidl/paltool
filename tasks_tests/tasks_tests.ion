@@ -28,19 +28,49 @@ func test_unstarted()
   #assert(Task_compare(unstarted.buf[1].task_being_blocked, id) == 0);
 }
 
+func test_thread_work_queue_setup(queue : ThreadWorkQueue*, gen : int)
+{
+  pending_tasks_add(&queue.pending_tasks, pack_id(1, gen), {0}, {data=(:void*)1, fn=dummy_task_fn});
+  pending_tasks_add(&queue.pending_tasks, pack_id(2, gen), pack_id(1, gen), {data=(:void*)2, fn=dummy_task_fn});
+  pending_tasks_add(&queue.pending_tasks, pack_id(3, gen), {0}, {data=(:void*)4, fn=dummy_task_fn});
+  #assert(3 == queue.pending_tasks.len);
+  #assert(0 == thread_work_queue_find_index_first_ready(queue));
+
+  blockers_update(queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
+  #assert(1 == thread_work_queue_find_index_first_ready(queue));
+  pending_tasks_add(&queue.pending_tasks, pack_id(4, gen), pack_id(2, gen), {data=(:void*)3, fn=dummy_task_fn});
+  blockers_update(queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
+}
+
 func test_thread_work_queue()
 {
   queue : ThreadWorkQueue;
   #assert(0 == thread_work_queue_find_index_first_ready(&queue));
 
-  pending_tasks_add(&queue.pending_tasks, {1}, {0}, {fn=dummy_task_fn});
-  pending_tasks_add(&queue.pending_tasks, {2}, {1}, {fn=dummy_task_fn});
-  pending_tasks_add(&queue.pending_tasks, {3}, {0}, {fn=dummy_task_fn});
-  #assert(3 == queue.pending_tasks.len);
-  #assert(0 == thread_work_queue_find_index_first_ready(&queue));
-
-  blockers_map(&queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
-  #assert(1 == thread_work_queue_find_index_first_ready(&queue));
+  test_thread_work_queue_setup(&queue, 0);
+  
+  // Verify we can pull all tasks from the queue, in order indicated by data=
+  num_remaining := queue.pending_tasks.len;
+  while (num_remaining) {
+    blockers_update(&queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
+    ready_idx := thread_work_queue_find_index_first_ready(&queue);
+    #assert(ready_idx < queue.pending_tasks.len);
+    content := queue.pending_tasks.contents[ready_idx];
+    #assert(content.data == (:void*)num_remaining); 
+    // would execute
+    num_remaining--;
+    // then remove the task
+    pending_tasks_remove(&queue.pending_tasks, ready_idx);
+  } 
+  #assert(queue.pending_tasks.len == 0);
+  
+  // Verify we're reusing the storage rather than growing it
+  old_blockers_cap := containers.buf_cap(queue.blockers);
+  old_pending_tasks_cap := containers.buf_cap(queue.pending_tasks.tasks);
+  test_thread_work_queue_setup(&queue, 1);
+  #assert(containers.buf_cap(queue.blockers) == old_blockers_cap);
+  #assert(containers.buf_cap(queue.pending_tasks.tasks) == old_pending_tasks_cap);
+  #assert(queue.pending_tasks.len == 4);
 }
 
 func main(argc : int, argv: char**) : int {
