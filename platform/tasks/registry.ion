@@ -172,11 +172,19 @@ func pending_tasks_add(dest : PendingTasks*, task : Task, blocked_task : Task, c
 }
 
 // valid range: [first,num_elems)
-// post: [first,num_elems-1) <- [first+1,num_elems) 
+// post: [first,num_elems-1) <- [first+1,num_elems-1) 
 func elemshift_left(first : void*, elem_size : usize, num_elems : usize)
 {
   libc.memmove(first, (:uint8*)first+elem_size, elem_size * (num_elems - 1));
 }
+
+// valid range: [first,num_elems)
+// post: [first+1,num_elems-1) <- [first,num_elems-1) 
+func elemshift_right(first : void*, elem_size : usize, num_elems : usize)
+{
+  libc.memmove((:uint8*)first+elem_size, (:uint8*)first, elem_size * (num_elems - 1));
+}
+
 
 func pending_tasks_remove(dest : PendingTasks*, idx : usize)
 {
