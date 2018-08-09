@@ -30,6 +30,8 @@ func test_unstarted()
   #assert(Task_compare(unstarted.buf[1].task_being_blocked, id) == 0);
 }
 
+// @todo bundle pending_tasks_add + blocked_tasks_update into a thread-safe "start"
+
 func test_thread_work_queue_setup(queue : ThreadWorkQueue*, gen : int)
 {
   pending_tasks_add(&queue.pending_tasks, pack_id(1, gen), {0}, {data=(:void*)1, fn=dummy_task_fn});
@@ -37,11 +39,11 @@ func test_thread_work_queue_setup(queue : ThreadWorkQueue*, gen : int)
   pending_tasks_add(&queue.pending_tasks, pack_id(3, gen), {0}, {data=(:void*)4, fn=dummy_task_fn});
   #assert(3 == queue.pending_tasks.len);
   #assert(0 == thread_work_queue_find_index_first_ready(queue));
-
-  blockers_update(queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
+  blocked_tasks_update(queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
   #assert(1 == thread_work_queue_find_index_first_ready(queue));
+
   pending_tasks_add(&queue.pending_tasks, pack_id(4, gen), pack_id(2, gen), {data=(:void*)3, fn=dummy_task_fn});
-  blockers_update(queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
+  blocked_tasks_update(queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
 }
 
 func test_thread_work_queue()
@@ -54,7 +56,7 @@ func test_thread_work_queue()
   // Verify we can pull all tasks from the queue, in order indicated by data=
   num_remaining := queue.pending_tasks.len;
   while (num_remaining) {
-    blockers_update(&queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
+    blocked_tasks_update(&queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.tasks, queue.pending_tasks.blocks);
     ready_idx := thread_work_queue_find_index_first_ready(&queue);
     #assert(ready_idx < queue.pending_tasks.len);
     content := queue.pending_tasks.contents[ready_idx];
@@ -67,10 +69,10 @@ func test_thread_work_queue()
   #assert(queue.pending_tasks.len == 0);
   
   // Verify we're reusing the storage rather than growing it
-  old_blockers_cap := containers.buf_cap(queue.blockers);
+  old_blocked_tasks_cap := containers.buf_cap(queue.blocked_tasks);
   old_pending_tasks_cap := containers.buf_cap(queue.pending_tasks.tasks);
   test_thread_work_queue_setup(&queue, 1);
-  #assert(containers.buf_cap(queue.blockers) == old_blockers_cap);
+  #assert(containers.buf_cap(queue.blocked_tasks) == old_blocked_tasks_cap);
   #assert(containers.buf_cap(queue.pending_tasks.tasks) == old_pending_tasks_cap);
   #assert(queue.pending_tasks.len == 4);
 }
@@ -81,94 +83,6 @@ func main(argc : int, argv: char**) : int
   printf("num_logical_cpus\t%d\n", num_cpus);
   test_unstarted();
   test_thread_work_queue();
-  test_bsearch();
   return 0;
 }
 
-struct BoundedRange
-{
-  first, last : usize;
-}
-
-// @pre: counted_range(elems, num_elems) sorted asc
-func lower_bound(num_elems : usize, elems : uint64*, a : uint32) : usize
-{
-  first_idx : usize = 0;
-  n := num_elems;
-  while (n != 0) {
-    halfway := n/2;
-    midpoint_idx := first_idx + halfway;
-    if (elems[midpoint_idx] < a) {
-      // idx in [first, midpoint_idx+1) elems[idx] < a
-      first_idx = midpoint_idx + 1;
-      n = n - halfway - 1;
-    } else {
-      n = halfway;
-    }
-  }
-  return first_idx;
-}
-
-// @pre: counted_range(elems, num_elems) sorted asc
-func upper_bound(num_elems : usize, elems : uint64*, a : uint32) : usize
-{
-  first_idx : usize = 0;
-  n := num_elems;
-  while (n != 0) {
-    halfway := n/2;
-    midpoint_idx := first_idx + halfway;
-    if (elems[midpoint_idx] <= a) {
-      first_idx = midpoint_idx + 1;
-      n = n - halfway - 1;
-    } else {
-      n = halfway;
-    }
-  }
-  return first_idx;
-}
-
-func equal_range(num_elems : usize, elems : uint64*, x : uint32) : BoundedRange
-{
-  return {lower_bound(num_elems, elems, x), upper_bound(num_elems, elems, x) };
-}
-
-func bs_put(elems_buf : uint64**, x : uint32)
-{
-  n := buf_len(*elems_buf);
-  range := equal_range(n, *elems_buf, x);
-  if (range.first == range.last && n - range.first > 0) {
-    buf_alloc_at(elems_buf, sizeof(*elems_buf[0]), n);
-    elemshift_right(&(*elems_buf)[range.first], sizeof((*elems_buf)[0]), buf_len(*elems_buf) - range.first);
-  }
-  *((:uint64*)buf_alloc_at(elems_buf, sizeof(*elems_buf[0]), range.first)) = x;
-  for (i:=range.first+1; i<range.last; i++) {
-    *((:uint64*)buf_alloc_at(elems_buf, sizeof(*elems_buf[0]), i)) = x;
-  }
-}
-
-func test_bsearch()
-{
-  elems : uint64*;
-  goal_n : usize const = 1000; // @todo I wish I could say `foo : const = `
-  containers.buf_fit(elems, sizeof(elems[0]), goal_n);
-
-  rand := pcg32_random{345, 20054789};
-  pcg32_random_check(rand);
-  datum.pcg32_random_r(&rand);
-
-  for (i:=0; i<goal_n; i++) {
-    x := datum.pcg32_random_r(&rand);
-    bs_put(&elems, x);
-    #assert(buf_len(elems) == 1+i);
-    bs_put(&elems, x);
-    #assert(buf_len(elems) == 1+i);
-    num_elems := buf_len(elems);
-    if (num_elems > 0) {
-      prev := elems[0];
-      for (si:=1; si<num_elems; si++) {
-        #assert(prev <= elems[si]);
-        prev = elems[si];
-      }
-    }
-  }
-}

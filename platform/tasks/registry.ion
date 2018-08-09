@@ -36,10 +36,16 @@ struct UnstartedTasks
   buf : UnstartedTask*;
 }
 
+struct ThreadWorkQueue
+{
+  blocked_tasks : TaskBlocker*;
+  pending_tasks : PendingTasks;
+}
+
 struct TaskBlocker
 {
-  task : Task;
-  blockers_exist_in_thread : uint64; // bitmap of threads with existing blocker task
+  task : Task; // task being blocked
+  blockers_exist_in_thread : uint64; // bitmap of threads with existing blocker task. 0 means no blockers exist
 }
 
 struct PendingTasks
@@ -49,12 +55,6 @@ struct PendingTasks
     tasks : Task*;
     blocks : Task*; // task that is released when ours is done
     contents : TaskContent*;
-}
-
-struct ThreadWorkQueue
-{
-  blockers : TaskBlocker*;
-  pending_tasks : PendingTasks;
 }
 
 struct Threads
@@ -198,47 +198,108 @@ func pending_tasks_remove(dest : PendingTasks*, idx : usize)
   containers.buf_hdr_mutable(dest.contents).size -= sizeof(dest.contents[0]);
 }
 
-// @todo binary search in blockers
-// @todo clean-up old blockers (partition and put at the end)
+// @todo binary search in blocked_tasks
+// @todo clean-up old blocked_tasks (partition and put at the end)
 
-func blockers_put(blockers_ptr : TaskBlocker**, task : Task, has_blockers_bitmask : uint64)
+struct CountedRange
 {
-  blockers : TaskBlocker const* const = *blockers_ptr;
-  n := buf_len(blockers);
-  last_free_below_idx := 0;
-  last_below_idx := 0;
-  insert_at_idx := int(n);
-  for (i:=0; i<n; i++) {
-    cmp := Task_compare(blockers[i].task, task);
-    if (cmp == 0) {
-      insert_at_idx = i;
-      break; 
+  pos: usize;
+  n: usize;
+}
+
+func blocked_tasks_bsearch_n(blocked_tasks: TaskBlocker const *, num_blocked_tasks: usize, task : Task const) : CountedRange
+{
+  first := 0;
+  n := num_blocked_tasks;
+  while(n > 0) {
+    halfwidth := n/2;
+    midpoint := first + halfwidth;
+    cmp := Task_compare(blocked_tasks[midpoint].task, task);
+    if (cmp < 0) {
+      first = midpoint + 1;
+      n = n - (halfwidth + 1);
     } else if (cmp > 0) {
-      break;
-    }
-    is_free := blockers[i].blockers_exist_in_thread == 0;
-    if (is_free) { last_free_below_idx = i + 1; }
-    last_below_idx = i + 1; 
-  }
-  if (insert_at_idx == n) {
-    if (last_free_below_idx > 0) {
-      insert_at_idx = last_free_below_idx - 1;
-    } else if (last_below_idx > 0) {
-      insert_at_idx = last_below_idx;
+      n = halfwidth;
+    } else {
+      left := blocked_tasks_bsearch_lower_bound_n(&blocked_tasks[first], halfwidth, task);
+      right := blocked_tasks_bsearch_upper_bound_n(&blocked_tasks[midpoint + 1], n - midpoint - 1, task);
+      return { first + left, midpoint + 1 + right - (first + left) };
     }
   }
-  blocker : TaskBlocker* = buf_alloc_at(blockers_ptr, sizeof(blockers[0]), insert_at_idx);
+  return { first, 0 };
+}
+
+func blocked_tasks_bsearch_lower_bound_n(blocked_tasks: TaskBlocker const *, num_blocked_tasks: usize, task : Task const) : usize
+{
+  n := num_blocked_tasks;
+  first := 0;
+  while (n > 0) {
+    halfwidth := n/2;
+    midpoint := first + halfwidth;
+    cmp := Task_compare(blocked_tasks[midpoint].task, task);
+    if (cmp < 0) {
+      first = midpoint + 1;
+      n = n - (halfwidth + 1);
+    } else {
+      n = halfwidth;
+    }
+  }
+  return first;
+}
+
+func blocked_tasks_bsearch_upper_bound_n(blocked_tasks: TaskBlocker const *, num_blocked_tasks: usize, task : Task const) : usize
+{
+  n := num_blocked_tasks;
+  first := 0;
+  while (n > 0) {
+    halfwidth := n/2;
+    midpoint := first + halfwidth;
+    cmp := Task_compare(blocked_tasks[midpoint].task, task);
+    if (cmp > 0) {
+      n = halfwidth;
+    } else {
+      first = midpoint + 1;
+      n = n - (halfwidth + 1);
+    }
+  }
+  return first;
+}
+
+func blocked_tasks_put(blocked_tasks_ptr : TaskBlocker**, task : Task, has_blockers_bitmask : uint64)
+{
+  range := blocked_tasks_bsearch_n(*blocked_tasks_ptr, buf_len(*blocked_tasks_ptr), task);
+  blocker : TaskBlocker*;
+  if (range.n == 0) {
+    // find free spot
+    free_spot := range.pos;
+    while (free_spot > 0 && (*blocked_tasks_ptr)[free_spot - 1].blockers_exist_in_thread) {
+      free_spot--;
+    }
+    if (free_spot < range.pos) {
+      blocker = &(*blocked_tasks_ptr)[free_spot];
+    } else {
+      // add one
+      buf_alloc_at(blocked_tasks_ptr, sizeof(*blocked_tasks_ptr[0]), buf_len(*blocked_tasks_ptr));
+      blocked := *blocked_tasks_ptr;
+      n := buf_len(blocked);
+      elemshift_right(&blocked[range.pos], sizeof(*blocked), n - range.pos);
+      blocker = &blocked[range.pos];
+    }
+  } else {
+    #assert(range.n == 1);
+    blocker = &(*blocked_tasks_ptr)[range.pos];
+  }
   blocker.task = task;
   blocker.blockers_exist_in_thread |= has_blockers_bitmask;
 }
 
-func blockers_update(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64, num_tasks : usize, tasks : Task*, blocked_tasks : Task*)
+func blocked_tasks_update(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64, num_tasks : usize, tasks : Task*, blocked_tasks : Task*)
 {
   // reset all
   {
-    n:=buf_len(dest.blockers);
+    n:=buf_len(dest.blocked_tasks);
     for (i:=0; i<n; i++) {
-      dest.blockers[i].blockers_exist_in_thread &= ~has_blockers_bitmask;
+      dest.blocked_tasks[i].blockers_exist_in_thread &= ~has_blockers_bitmask;
     }
   }
   for (i:=0; i<dest.pending_tasks.len; i++) {
@@ -250,7 +311,7 @@ func blockers_update(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64, num
       break;
     }
     if (!is_blocked_by_task) { continue; }
-    blockers_put(&dest.blockers, task, has_blockers_bitmask);
+    blocked_tasks_put(&dest.blocked_tasks, task, has_blockers_bitmask);
   }
 }
 
@@ -259,12 +320,10 @@ func thread_work_queue_find_index_first_ready(self : ThreadWorkQueue const*) : i
   for (i:= 0; i <self.pending_tasks.len; i++) {
     task := self.pending_tasks.tasks[i];
     ready := true;
-    for (j:= 0; j<buf_len(self.blockers); j++) {
-      if (Task_compare(self.blockers[j].task, task) != 0) { continue; }
-      if (self.blockers[j].blockers_exist_in_thread) {
-        ready = false;
-      }
-      break;
+    task_in_blocked := blocked_tasks_bsearch_n(&self.blocked_tasks[0], buf_len(self.blocked_tasks), task);
+    if (task_in_blocked.n > 0) {
+      #assert(task_in_blocked.n == 1);
+      ready = !self.blocked_tasks[task_in_blocked.pos].blockers_exist_in_thread;
     }
     if (!ready) { continue; }
     return i;
