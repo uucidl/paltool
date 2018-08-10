@@ -33,7 +33,7 @@ func platform_tasks_init()
   }
   native_threads.num_threads = containers.buf_len(native_threads.thread_handles);
   if (native_threads.num_threads == 0) {
-    // @todo @error_handling fatal error? or synchronous execution?
+    // @todo @error_handling tell users we switched to synchronous execution
     #assert(false);
   }
 }
@@ -45,11 +45,13 @@ func platform_tasks_deinit()
     success := win32.TerminateThread(handle, '?');
     if (!success) {
       // @todo @error_handling
+      err := win32.GetLastError();
       #assert(false);
     }
     success = win32.CloseHandle(handle);
     if (!success) {
       // @todo @error_handling
+      err := win32.GetLastError();
       #assert(false);
     }
   }
@@ -71,7 +73,12 @@ func platform_task_depends_on(task : Task, dependency : Task)
 // Schedule a task to run as soon as possible
 func platform_start_task(task : Task)
 {
-    #assert(false); // unimplemented
+  content := unstarted_discard(&unstarted_tasks, task);
+  if (native_threads.num_threads == 0) {
+    content.fn(content.data);
+    return;
+  }
+  #assert(false); // unimplemented
 }
 
 func _get_num_logical_cpus() : int
