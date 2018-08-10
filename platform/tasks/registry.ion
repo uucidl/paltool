@@ -272,7 +272,7 @@ func blocked_tasks_put(blocked_tasks_ptr : TaskBlocker**, task : Task, has_block
   if (range.n == 0) {
     // find free spot
     free_spot := range.pos;
-    while (free_spot > 0 && (*blocked_tasks_ptr)[free_spot - 1].blockers_exist_in_thread) {
+    while (free_spot > 0 && !(*blocked_tasks_ptr)[free_spot - 1].blockers_exist_in_thread) {
       free_spot--;
     }
     if (free_spot < range.pos) {
