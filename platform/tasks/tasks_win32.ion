@@ -1,6 +1,92 @@
+import containers
+
 import platform.win32 { 
+  HANDLE = HANDLE,
   SYSTEM_INFO = SYSTEM_INFO,
   GetSystemInfo = GetSystemInfo,
+}
+
+struct NativeThreads
+{
+  num_threads: usize;
+  thread_handles: HANDLE*;
+}
+
+var native_threads : NativeThreads;
+
+// @todo @ion add/show argument that is invalid:
+// Invalid type in function call argument
+
+// @todo CreateThread vs _beginthreadex .. what's the deal?
+
+func platform_tasks_init()
+{
+  num_cpus := _get_num_logical_cpus();
+  for (i:=0; i<num_cpus; i++) {
+    handle := win32.CreateThread(NULL, 0, task_core_worker, NULL, 0, NULL);
+    if (!handle) {
+      // @todo @error_handling
+      err := win32.GetLastError();
+      #assert(err == 0);
+    }
+    containers.buf_push(&native_threads.thread_handles, &handle, sizeof(handle));
+  }
+  native_threads.num_threads = containers.buf_len(native_threads.thread_handles);
+  if (native_threads.num_threads == 0) {
+    // @todo @error_handling fatal error? or synchronous execution?
+    #assert(false);
+  }
+}
+
+func platform_tasks_deinit()
+{
+  for (i:=0; i<native_threads.num_threads; i++) {
+    handle := native_threads.thread_handles[i];
+    success := win32.TerminateThread(handle, '?');
+    if (!success) {
+      // @todo @error_handling
+      #assert(false);
+    }
+    success = win32.CloseHandle(handle);
+    if (!success) {
+      // @todo @error_handling
+      #assert(false);
+    }
+  }
+}
+
+func platform_create_task(fn : TaskFunc, data : void*) : Task
+{
+  // @todo @thread_safety
+  return unstarted_create(&unstarted_tasks, {data=data, fn=fn});
+}
+
+
+func platform_task_depends_on(task : Task, dependency : Task)
+{
+  // @todo @thread_safety
+  unstarted_depends_on(&unstarted_tasks, task, dependency);
+}
+
+// Schedule a task to run as soon as possible
+func platform_start_task(task : Task)
+{
+    #assert(false); // unimplemented
+}
+
+func _get_num_logical_cpus() : int
+{
+  system_info : SYSTEM_INFO;
+  GetSystemInfo(&system_info);
+  return system_info.dwNumberOfProcessors;
+}
+
+func task_core_worker(lpParameter: void*) : uint32
+{
+  while (true) {
+    win32.SleepEx(1000, false);
+  }
+  return '?';
 }
 
 /*
@@ -29,34 +115,3 @@ Plan
   + what's acceptable latency? best-effort? Next available core should pick-up the work.
 
 */
-
-func platform_tasks_init()
-{
-}
-
-func platform_tasks_deinit()
-{
-}
-
-func platform_create_task(fn : TaskFunc, data : void*) : Task
-{
-	return {};
-}
-
-
-func platform_task_depends_on(task : Task, dependency : Task)
-{
-}
-
-// Schedule a task to run as soon as possible
-func platform_start_task(task : Task)
-{
-    #assert(false); // unimplemented
-}
-
-func _get_num_logical_cpus() : int
-{
-  system_info : SYSTEM_INFO;
-  GetSystemInfo(&system_info);
-  return system_info.dwNumberOfProcessors;
-}

@@ -1,13 +1,15 @@
 typedef BOOL = int;
-typedef WORD = ushort;
 typedef DWORD = uint32;
 typedef HANDLE = void*;
+typedef SIZE_T = ULONG_PTR;
 typedef UINT = uint;
+typedef WORD = ushort;
 
 typedef ULONG_PTR = uint64;
 typedef DWORD_PTR = ULONG_PTR;
 
 typedef LPCSTR = char const*;
+typedef LPDWORD = DWORD*;
 typedef LPSTR = char*;
 typedef LPWSTR = wchar*;
 typedef LPCWSTR = wchar const*;

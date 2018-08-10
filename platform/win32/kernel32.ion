@@ -7,10 +7,21 @@ const MAX_PATH = 256;
 
 const FILE_ATTRIBUTE_DIRECTORY = 0x10;
 
+@foreign("LPTHREAD_START_ROUTINE")
+typedef THREAD_START_ROUTINE = func(lpParameter: LPVOID) : DWORD;
+
 @foreign("FILETIME")
 struct FILETIME
 {
   dwLowDateTime, dwHighDateTime : DWORD;
+}
+
+@foreign("SECURITY_ATTRIBUTES")
+struct SECURITY_ATTRIBUTES
+{
+  nLength: DWORD;
+  lpSecurityDescriptor: LPVOID;
+  bInheritHandle: BOOL;
 }
 
 @foreign("SYSTEM_INFO")
@@ -64,6 +75,19 @@ enum FindFirstFileExFlags {
   FIND_FIRST_EX_LARGE_FETCH = 2,
 }
 
+@foreign("CloseHandle")
+func CloseHandle(handle : HANDLE) : BOOL;
+
+@foreign("CreateThread")
+func CreateThread(
+  lpThreadAttributes: SECURITY_ATTRIBUTES*,
+  dwStackSize: SIZE_T,
+  lpStartAddress: THREAD_START_ROUTINE,
+  lpParameter: LPVOID,
+  dwCreationFlags: DWORD,
+  lpThreadId: LPDWORD
+) : HANDLE;
+
 @foreign("FindFirstFileExW")
 func FindFirstFileExW(
   lpFileName : LPCWSTR,
@@ -80,6 +104,9 @@ func FindNextFileW(
   lpFindFileData : WIN32_FIND_DATAW*
 ) : BOOL;
 
+@foreign("GetLastError")
+func GetLastError() : DWORD;
+
 @foreign("GetSystemInfo")
 func GetSystemInfo(lpSystemInfo : SYSTEM_INFO*);
 
@@ -92,6 +119,12 @@ func MultiByteToWideChar(
   lpWideCharStr : LPWSTR,
   cchWideChar : int
 ) : int;
+
+@foreign("SleepEx")
+func SleepEx(dwMilliseconds: DWORD, bAlertable: BOOL) : DWORD;
+
+@foreign("TerminateThread")
+func TerminateThread(hThread: HANDLE, dwExitCode: DWORD) : BOOL;
 
 @foreign("WideCharToMultiByte")
 func WideCharToMultiByte(
