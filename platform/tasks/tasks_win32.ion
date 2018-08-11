@@ -2,16 +2,26 @@ import containers
 
 import platform.win32 { 
   HANDLE = HANDLE,
+  SRWLOCK = SRWLOCK,
   SYSTEM_INFO = SYSTEM_INFO,
   GetSystemInfo = GetSystemInfo,
+}
+
+struct WorkerThread
+{
+  lock: SRWLOCK;
+  bitmask: int;
+  queue: ThreadWorkQueue;
 }
 
 struct NativeThreads
 {
   num_threads: usize;
   thread_handles: HANDLE*;
+  thread_states : WorkerThread*;
 }
 
+var registry_lock : SRWLOCK;
 var native_threads : NativeThreads;
 
 // @todo @ion add/show argument that is invalid:
@@ -21,9 +31,13 @@ var native_threads : NativeThreads;
 
 func platform_tasks_init()
 {
+  win32.AcquireSRWLockExclusive(&registry_lock);
   num_cpus := _get_num_logical_cpus();
+  containers.buf_alloc_at(&native_threads.thread_states, sizeof(native_threads.thread_states[0]), num_cpus - 1);
   for (i:=0; i<num_cpus; i++) {
-    handle := win32.CreateThread(NULL, 0, task_core_worker, NULL, 0, NULL);
+    #assert(i < 8*sizeof(native_threads.thread_states[i].bitmask));
+    native_threads.thread_states[i].bitmask = 1<<i;
+    handle := win32.CreateThread(NULL, 0, task_core_worker, &native_threads.thread_states[i], 0, NULL);
     if (!handle) {
       // @todo @error_handling
       err := win32.GetLastError();
@@ -32,14 +46,17 @@ func platform_tasks_init()
     containers.buf_push(&native_threads.thread_handles, &handle, sizeof(handle));
   }
   native_threads.num_threads = containers.buf_len(native_threads.thread_handles);
+  #assert(containers.buf_len(native_threads.thread_states) == native_threads.num_threads);
   if (native_threads.num_threads == 0) {
     // @todo @error_handling tell users we switched to synchronous execution
     #assert(false);
   }
+  win32.ReleaseSRWLockExclusive(&registry_lock);
 }
 
 func platform_tasks_deinit()
 {
+  win32.AcquireSRWLockExclusive(&registry_lock);
   for (i:=0; i<native_threads.num_threads; i++) {
     handle := native_threads.thread_handles[i];
     success := win32.TerminateThread(handle, '?');
@@ -55,30 +72,55 @@ func platform_tasks_deinit()
       #assert(false);
     }
   }
+  buf_free(native_threads.thread_handles);
+  native_threads = {};
+  win32.ReleaseSRWLockExclusive(&registry_lock);
 }
 
 func platform_create_task(fn : TaskFunc, data : void*) : Task
 {
-  // @todo @thread_safety
-  return unstarted_create(&unstarted_tasks, {data=data, fn=fn});
+  win32.AcquireSRWLockExclusive(&registry_lock);
+  result := unstarted_create(&unstarted_tasks, {data=data, fn=fn});
+  win32.ReleaseSRWLockExclusive(&registry_lock);
+  return result;
 }
 
 
 func platform_task_depends_on(task : Task, dependency : Task)
 {
-  // @todo @thread_safety
+  win32.AcquireSRWLockExclusive(&registry_lock);
   unstarted_depends_on(&unstarted_tasks, task, dependency);
+  win32.ReleaseSRWLockExclusive(&registry_lock);
 }
 
 // Schedule a task to run as soon as possible
 func platform_start_task(task : Task)
 {
+  win32.AcquireSRWLockExclusive(&registry_lock);
+  task_being_blocked := unstarted_tasks.buf[unpack_idx_from_id(task)].task_being_blocked;
   content := unstarted_discard(&unstarted_tasks, task);
+  win32.ReleaseSRWLockExclusive(&registry_lock);
+
   if (native_threads.num_threads == 0) {
     content.fn(content.data);
+    #assert(false); // implement running the task being blocked
     return;
   }
-  #assert(false); // unimplemented
+
+  thread_idx : int;
+  {
+    hash := hash_init();
+    hash = hash_mix_bytes(hash, (:uint8*)&content.data, sizeof(content.data));
+    hash = hash_mix_bytes(hash, (:uint8*)&content.fn, sizeof(content.fn));
+    thread_idx = hash % native_threads.num_threads;
+  }
+  #assert(thread_idx >= 0 && thread_idx < native_threads.num_threads);
+
+  thread := &native_threads.thread_states[thread_idx];
+  win32.AcquireSRWLockExclusive(&thread.lock);
+  pending_tasks_add(&thread.queue.pending_tasks, task, task_being_blocked, content);
+  blocked_tasks_update(&thread.queue, 1<<thread_idx, thread.queue.pending_tasks.len, thread.queue.pending_tasks.tasks, thread.queue.pending_tasks.blocks);
+  win32.ReleaseSRWLockExclusive(&thread.lock);
 }
 
 func _get_num_logical_cpus() : int
@@ -90,7 +132,20 @@ func _get_num_logical_cpus() : int
 
 func task_core_worker(lpParameter: void*) : uint32
 {
+  thread : WorkerThread* = lpParameter;
   while (true) {
+    win32.AcquireSRWLockExclusive(&thread.lock);
+    blocked_tasks_update(&thread.queue, thread.bitmask, thread.queue.pending_tasks.len, thread.queue.pending_tasks.tasks, thread.queue.pending_tasks.blocks);
+    ready_idx := thread_work_queue_find_index_first_ready(&thread.queue);
+    content : TaskContent;
+    if (ready_idx < thread.queue.pending_tasks.len) {
+      content = thread.queue.pending_tasks.contents[ready_idx];
+      pending_tasks_remove(&thread.queue.pending_tasks, ready_idx);
+    }
+    win32.ReleaseSRWLockExclusive(&thread.lock);
+    if (content.fn) {
+      content.fn(content.data);
+    }
     win32.SleepEx(1000, false);
   }
   return '?';

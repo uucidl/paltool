@@ -133,17 +133,28 @@ func hash_uint64(x : uint64) : uint64
      return x;
 }
 
-func hash_bytes(bytes : char const*, num_bytes : usize) : uint64
+func hash_bytes(bytes : uint8 const*, num_bytes : usize) : uint64
 {
-     x : uint64 = 0xcbf29ce484222325;
-     for (i:=0; i<num_bytes; i++)
-     {
-          x ^= bytes[i];
-          x *= 0x100000001b3;
-          x ^= x >> 32;
-     }
-     return x;
+  x := hash_init();
+  return hash_mix_bytes(x, bytes, num_bytes);
 }
+
+func hash_init() : uint64
+{
+  return 0xcbf29ce484222325;
+}
+
+func hash_mix_bytes(x : uint64, bytes: uint8 const*, num_bytes: usize) : uint64
+{
+  for (i:=0; i<num_bytes; i++)
+  {
+      x ^= bytes[i];
+      x *= 0x100000001b3;
+      x ^= x >> 32;
+  }
+  return x;
+}
+
 
 func hash_ptr(ptr : void const*) : uint64
 {

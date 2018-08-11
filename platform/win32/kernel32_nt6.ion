@@ -1,0 +1,52 @@
+// apis that appeared after nt6
+
+#foreign(header="<synchapi.h>")
+
+// SRWLock variables must be zero initialized
+// (RTL_SRWLOCK_INIT is {0})
+//
+// Thankfully, that's what ion does for us anyway :)
+@foreign("SRWLOCK")
+struct SRWLOCK
+{
+    Ptr: void*;
+}
+
+// Same deal, must be zero initialized
+@foreign("CONDITION_VARIABLE")
+struct CONDITION_VARIABLE
+{
+    Ptr: void*;
+}
+
+@foreign("AcquireSRWLockExclusive")
+func AcquireSRWLockExclusive(SRWLock: SRWLOCK*);
+
+@foreign("AcquireSRWLockShared")
+func AcquireSRWLockShared(SRWLock: SRWLOCK*);
+ 
+@foreign("ReleaseSRWLockExclusive")
+func ReleaseSRWLockExclusive(SRWLock: SRWLOCK*);
+
+@foreign("ReleaseSRWLockShared")
+func ReleaseSRWLockShared(SRWLock: SRWLOCK*);
+
+@foreign("TryAcquireSRWLockExclusive")
+func TryAcquireSRWLockExclusive(SRWLock: SRWLOCK*) : BOOLEAN;
+
+@foreign("TryAcquireSRWLockShared")
+func TryAcquireSRWLockShared(SRWLock: SRWLOCK*) : BOOLEAN;
+ 
+@foreign("SleepConditionVariableSRW")
+func SleepConditionVariableSRW(
+  ConditionVariable: CONDITION_VARIABLE*,
+  SRWLock: SRWLOCK*,
+  dwMilliseconds: DWORD,
+  Flags: ULONG
+) : BOOL;
+
+@foreign("WakeAllConditionVariable")
+func WakeAllConditionVariable(ConditionVariable: CONDITION_VARIABLE*);
+
+@foreign("WakeConditionVariable")
+func WakeConditionVariable(ConditionVariable: CONDITION_VARIABLE*);

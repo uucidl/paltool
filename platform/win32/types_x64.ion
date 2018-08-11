@@ -1,8 +1,11 @@
 typedef BOOL = int;
+typedef BOOLEAN = BYTE;
+typedef BYTE = uint8;
 typedef DWORD = uint32;
 typedef HANDLE = void*;
 typedef SIZE_T = ULONG_PTR;
 typedef UINT = uint;
+typedef ULONG = ulong;
 typedef WORD = ushort;
 
 typedef ULONG_PTR = uint64;
