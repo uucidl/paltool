@@ -132,21 +132,28 @@ func _get_num_logical_cpus() : int
 
 func task_core_worker(lpParameter: void*) : uint32
 {
-  thread : WorkerThread* = lpParameter;
+  thread: WorkerThread* = lpParameter;
   while (true) {
+    tasks: TaskContent[4];
+    num_tasks: usize;
+
     win32.AcquireSRWLockExclusive(&thread.lock);
     blocked_tasks_update(&thread.queue, thread.bitmask, thread.queue.pending_tasks.len, thread.queue.pending_tasks.tasks, thread.queue.pending_tasks.blocks);
-    ready_idx := thread_work_queue_find_index_first_ready(&thread.queue);
-    content : TaskContent;
-    if (ready_idx < thread.queue.pending_tasks.len) {
-      content = thread.queue.pending_tasks.contents[ready_idx];
+    while (true) {
+      ready_idx := thread_work_queue_find_index_first_ready(&thread.queue);
+      content : TaskContent;
+      if (ready_idx >= thread.queue.pending_tasks.len) {
+        break;
+      }
+      tasks[num_tasks++] = thread.queue.pending_tasks.contents[ready_idx];
       pending_tasks_remove(&thread.queue.pending_tasks, ready_idx);
     }
     win32.ReleaseSRWLockExclusive(&thread.lock);
-    if (content.fn) {
+    while (num_tasks) {
+      content := tasks[--num_tasks];
       content.fn(content.data);
     }
-    win32.SleepEx(1000, false);
+    win32.SleepEx(1000, false); // @todo replace with condition variable waiting for new tasks in our queue
   }
   return '?';
 }
