@@ -33,6 +33,7 @@ var native_threads : NativeThreads;
 func platform_tasks_init()
 {
   win32.AcquireSRWLockExclusive(&registry_lock);
+  registry_init();
   num_cpus := _get_num_logical_cpus();
   containers.buf_alloc_at(&native_threads.thread_states, sizeof(native_threads.thread_states[0]), num_cpus - 1);
   for (i:=0; i<num_cpus; i++) {
@@ -62,6 +63,7 @@ func platform_tasks_init()
 func platform_tasks_deinit()
 {
   win32.AcquireSRWLockExclusive(&registry_lock);
+  // Shutdown all native threads:
   for (i:=0; i<native_threads.num_threads; i++) {
     handle := native_threads.thread_handles[i];
     success := win32.TerminateThread(handle, '?');
@@ -79,6 +81,7 @@ func platform_tasks_deinit()
   }
   buf_free(native_threads.thread_handles);
   native_threads = {};
+  registry_deinit();
   win32.ReleaseSRWLockExclusive(&registry_lock);
 }
 
@@ -112,19 +115,13 @@ func platform_start_task(task : Task)
     return;
   }
 
-  thread_idx : int;
-  {
-    hash := hash_init();
-    hash = hash_mix_bytes(hash, (:uint8*)&content.data, sizeof(content.data));
-    hash = hash_mix_bytes(hash, (:uint8*)&content.fn, sizeof(content.fn));
-    thread_idx = hash % native_threads.num_threads;
-  }
-  #assert(thread_idx >= 0 && thread_idx < native_threads.num_threads);
+  thread := &native_threads.thread_states[
+    pick_thread_idx(content, native_threads.num_threads)
+  ];
 
-  thread := &native_threads.thread_states[thread_idx];
   win32.AcquireSRWLockExclusive(&thread.lock);
   pending_tasks_add(&thread.queue.pending_tasks, task, task_being_blocked, content);
-  blocked_tasks_update(&thread.queue, 1<<thread_idx, thread.queue.pending_tasks.len, thread.queue.pending_tasks.tasks, thread.queue.pending_tasks.blocks);
+  blocked_tasks_update(&thread.queue, thread.bitmask, thread.queue.pending_tasks.len, thread.queue.pending_tasks.tasks, thread.queue.pending_tasks.blocks);
   win32.ReleaseSRWLockExclusive(&thread.lock);
 }
 
@@ -178,6 +175,16 @@ func task_core_worker(lpParameter: void*) : uint32
     }
   }
   return '?';
+}
+
+func pick_thread_idx(content : TaskContent, num_threads: usize) : usize
+{
+  hash := hash_init();
+  hash = hash_mix_bytes(hash, (:uint8*)&content.data, sizeof(content.data));
+  hash = hash_mix_bytes(hash, (:uint8*)&content.fn, sizeof(content.fn));
+  thread_idx := hash % native_threads.num_threads;
+  #assert(thread_idx >= 0 && thread_idx < num_threads);
+  return thread_idx;
 }
 
 /*

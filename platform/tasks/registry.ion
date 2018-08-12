@@ -3,16 +3,13 @@ import containers {...}
 import libc {}
 
 var unstarted_tasks : UnstartedTasks;
-var threads : Threads;
 
 func registry_init()
 {
-  threads_init(&threads, _get_num_logical_cpus());
 }
 
 func registry_deinit()
 {
-  threads_deinit(&threads);
   buf_free(unstarted_tasks.buf);
   unstarted_tasks = {};
 }
@@ -55,16 +52,6 @@ struct PendingTasks
     tasks : Task*;
     blocks : Task*; // task that is released when ours is done
     contents : TaskContent*;
-}
-
-struct Threads
-{
-  num_threads : usize;
-  work_queues : ThreadWorkQueue*;
-  // @todo: insert here per thread platform specific sync:
-  // - mutex for mutual exclusion of reading/writing
-  // - signal to signal when pending tasks are incoming, and wait when none exist
-  // @todo: a thread work queue should not share same cache lines as any other 
 }
 
 func Task_compare(a : Task const, b : Task const) : int
@@ -136,29 +123,6 @@ func unstarted_depends_on(self : UnstartedTasks*, id : Task, predecessor_id : Ta
   self.buf[unpack_idx_from_id(predecessor_id)].task_being_blocked = id;
 }
 
-func threads_init(self : Threads*, num_threads : usize)
-{
-  #assert(num_threads < 64);
-  self.num_threads = num_threads;
-  self.work_queues = libc.calloc(self.num_threads, sizeof(self.work_queues[0]));
-}
-
-func threads_deinit(self : Threads*)
-{
-  libc.free(self.work_queues);
-  *self = {};
-}
-
-func threads_alloc_for_num_tasks(self : Threads*, num_tasks : usize)
-{
-  #assert(false); // not yet implemented
-}
-
-func threads_enqueue_task(self : Threads*, task : Task, blocked_task : Task, content : TaskContent)
-{
-  #assert(false); // not yet implemented
-}
-
 func pending_tasks_add(dest : PendingTasks*, task : Task, blocked_task : Task, content : TaskContent)
 {
   *(:Task*)buf_alloc_at(&dest.tasks, sizeof(dest.tasks[0]), dest.len) = task;
@@ -197,9 +161,6 @@ func pending_tasks_remove(dest : PendingTasks*, idx : usize)
   containers.buf_hdr_mutable(dest.blocks).size -= sizeof(dest.blocks[0]);
   containers.buf_hdr_mutable(dest.contents).size -= sizeof(dest.contents[0]);
 }
-
-// @todo binary search in blocked_tasks
-// @todo clean-up old blocked_tasks (partition and put at the end)
 
 struct CountedRange
 {
