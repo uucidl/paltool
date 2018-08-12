@@ -10,6 +10,7 @@ import platform.win32 {
 struct WorkerThread
 {
   lock: SRWLOCK;
+  idx: int;
   bitmask: int;
   queue: ThreadWorkQueue;
 }
@@ -36,8 +37,9 @@ func platform_tasks_init()
   containers.buf_alloc_at(&native_threads.thread_states, sizeof(native_threads.thread_states[0]), num_cpus - 1);
   for (i:=0; i<num_cpus; i++) {
     #assert(i < 8*sizeof(native_threads.thread_states[i].bitmask));
+    native_threads.thread_states[i].idx = i;
     native_threads.thread_states[i].bitmask = 1<<i;
-    handle := win32.CreateThread(NULL, 0, task_core_worker, &native_threads.thread_states[i], 0, NULL);
+    handle := win32.CreateThread(NULL, 0, task_core_worker, &native_threads.thread_states[i], win32.CREATE_SUSPENDED, NULL);
     if (!handle) {
       // @todo @error_handling
       err := win32.GetLastError();
@@ -50,6 +52,9 @@ func platform_tasks_init()
   if (native_threads.num_threads == 0) {
     // @todo @error_handling tell users we switched to synchronous execution
     #assert(false);
+  }
+  for (i:=0; i<native_threads.num_threads; i++) {
+    win32.ResumeThread(native_threads.thread_handles[i]);
   }
   win32.ReleaseSRWLockExclusive(&registry_lock);
 }
@@ -130,30 +135,47 @@ func _get_num_logical_cpus() : int
   return system_info.dwNumberOfProcessors;
 }
 
+func pull_ready_tasks_up_to_locked(thread: WorkerThread*, task_contents : TaskContent*, task_contents_len : usize) : usize {
+  num_tasks := 0;
+  blocked_tasks_update(&thread.queue, thread.bitmask, thread.queue.pending_tasks.len, thread.queue.pending_tasks.tasks, thread.queue.pending_tasks.blocks);
+  while (num_tasks < task_contents_len) {
+    ready_idx := thread_work_queue_find_index_first_ready(&thread.queue);
+    content : TaskContent;
+    if (ready_idx >= thread.queue.pending_tasks.len) {
+      break;
+    }
+    task_contents[num_tasks++] = thread.queue.pending_tasks.contents[ready_idx];
+    pending_tasks_remove(&thread.queue.pending_tasks, ready_idx);
+  }
+  return num_tasks;
+}
+
 func task_core_worker(lpParameter: void*) : uint32
 {
   thread: WorkerThread* = lpParameter;
   while (true) {
     tasks: TaskContent[4];
-    num_tasks: usize;
-
+    tasks_len := sizeof(tasks)/sizeof(tasks[0]);
     win32.AcquireSRWLockExclusive(&thread.lock);
-    blocked_tasks_update(&thread.queue, thread.bitmask, thread.queue.pending_tasks.len, thread.queue.pending_tasks.tasks, thread.queue.pending_tasks.blocks);
-    while (true) {
-      ready_idx := thread_work_queue_find_index_first_ready(&thread.queue);
-      content : TaskContent;
-      if (ready_idx >= thread.queue.pending_tasks.len) {
-        break;
-      }
-      tasks[num_tasks++] = thread.queue.pending_tasks.contents[ready_idx];
-      pending_tasks_remove(&thread.queue.pending_tasks, ready_idx);
-    }
+    num_tasks := pull_ready_tasks_up_to_locked(thread, tasks, tasks_len);
     win32.ReleaseSRWLockExclusive(&thread.lock);
+    if (num_tasks == 0) {
+      // steal tasks from other threads:
+      next_idx := (thread.idx + 1) % native_threads.num_threads;
+      for (; num_tasks == 0 && next_idx != thread.idx; next_idx = (next_idx + 1) % native_threads.num_threads) {
+        other_thread := &native_threads.thread_states[next_idx];
+        if (!win32.TryAcquireSRWLockExclusive(&other_thread.lock)) { continue; }
+        num_tasks = pull_ready_tasks_up_to_locked(other_thread, tasks, tasks_len);
+        win32.ReleaseSRWLockExclusive(&other_thread.lock);
+      }
+    }
+    if (num_tasks == 0) {
+      win32.SleepEx(1000, false); // @todo replace with condition variable waiting for new tasks in our queue
+    }
     while (num_tasks) {
       content := tasks[--num_tasks];
       content.fn(content.data);
     }
-    win32.SleepEx(1000, false); // @todo replace with condition variable waiting for new tasks in our queue
   }
   return '?';
 }

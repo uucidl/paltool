@@ -78,6 +78,10 @@ enum FindFirstFileExFlags {
 @foreign("CloseHandle")
 func CloseHandle(handle : HANDLE) : BOOL;
 
+enum CreationFlags {
+  CREATE_SUSPENDED = 0x00000004,
+}
+
 @foreign("CreateThread")
 func CreateThread(
   lpThreadAttributes: SECURITY_ATTRIBUTES*,
@@ -119,6 +123,9 @@ func MultiByteToWideChar(
   lpWideCharStr : LPWSTR,
   cchWideChar : int
 ) : int;
+
+@foreign("ResumeThread")
+func ResumeThread(hThread: HANDLE) : DWORD;
 
 @foreign("SleepEx")
 func SleepEx(dwMilliseconds: DWORD, bAlertable: BOOL) : DWORD;
