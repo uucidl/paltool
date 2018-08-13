@@ -1,5 +1,8 @@
 // apis that appeared after nt6
 
+// FindFirstFileExFlags
+const FIND_FIRST_EX_LARGE_FETCH = 2;
+
 #foreign(header="<synchapi.h>")
 
 // SRWLock variables must be zero initialized

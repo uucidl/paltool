@@ -37,7 +37,7 @@ func platform_find_all_files(root : uint8 const*) : PathListGenerator
 
   // Open query and get info about first file:
   one_file : WIN32_FIND_DATAW;
-  AdditionalFlags := FIND_FIRST_EX_LARGE_FETCH; // @todo @platform_specific{windows>7}
+  AdditionalFlags := FIND_FIRST_EX_LARGE_FETCH;
 	query := FindFirstFileExW(query_str, FindExInfoStandard, &one_file, FindExSearchNameMatch, NULL, AdditionalFlags);
 
   if (query != INVALID_HANDLE_VALUE) {

@@ -71,10 +71,6 @@ enum FINDEX_SEARCH_OPS {
   FindExSearchLimitToDevices = 2,
 } 
 
-enum FindFirstFileExFlags {
-  FIND_FIRST_EX_LARGE_FETCH = 2,
-}
-
 @foreign("CloseHandle")
 func CloseHandle(handle : HANDLE) : BOOL;
 

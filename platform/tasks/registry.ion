@@ -52,6 +52,7 @@ struct PendingTasks
     tasks : Task*;
     blocks : Task*; // task that is released when ours is done
     contents : TaskContent*;
+    executing : bool*;
 }
 
 func Task_compare(a : Task const, b : Task const) : int
@@ -100,6 +101,17 @@ func unstarted_create(self : UnstartedTasks*, content : TaskContent) : Task
   return unstarted_task.id;
 }
 
+func unstarted_blocker_exists_for(self: UnstartedTasks*, task: Task) : bool
+{
+  check_valid_id(self, task);
+  for (ut := &self.buf[0]; ut < &self.buf[buf_len(self.buf)]; ut++) {
+    if (!ut.content.fn) { continue; }
+    if (Task_compare(ut.task_being_blocked, task) == 0) { return true; }
+  }
+  return false;
+}
+
+
 func check_valid_id(self : UnstartedTasks*, id : Task)
 {
   idx := unpack_idx_from_id(id);
@@ -128,10 +140,12 @@ func pending_tasks_add(dest : PendingTasks*, task : Task, blocked_task : Task, c
   *(:Task*)buf_alloc_at(&dest.tasks, sizeof(dest.tasks[0]), dest.len) = task;
   *(:Task*)buf_alloc_at(&dest.blocks, sizeof(dest.blocks[0]), dest.len) = blocked_task;
   *(:TaskContent*)buf_alloc_at(&dest.contents, sizeof(dest.contents[0]), dest.len) = content;
+  *(:bool*)buf_alloc_at(&dest.executing, sizeof(dest.executing[0]), dest.len) = false;
   dest.len++;
   #assert(dest.len == buf_len(dest.tasks));
   #assert(dest.len == buf_len(dest.blocks));
   #assert(dest.len == buf_len(dest.contents));
+  #assert(dest.len == buf_len(dest.executing));
   dest.cap = dest.len;
 }
 
@@ -156,10 +170,12 @@ func pending_tasks_remove(dest : PendingTasks*, idx : usize)
   elemshift_left(&dest.tasks[idx], sizeof(dest.tasks[0]), dest.len - idx);
   elemshift_left(&dest.blocks[idx], sizeof(dest.blocks[0]), dest.len - idx);
   elemshift_left(&dest.contents[idx], sizeof(dest.contents[0]), dest.len - idx);
+  elemshift_left(&dest.executing[idx], sizeof(dest.executing[0]), dest.len - idx);
   dest.len--;
   containers.buf_hdr_mutable(dest.tasks).size -= sizeof(dest.tasks[0]);
   containers.buf_hdr_mutable(dest.blocks).size -= sizeof(dest.blocks[0]);
   containers.buf_hdr_mutable(dest.contents).size -= sizeof(dest.contents[0]);
+  containers.buf_hdr_mutable(dest.executing).size -= sizeof(dest.executing[0]);
 }
 
 struct CountedRange
@@ -254,7 +270,7 @@ func blocked_tasks_put(blocked_tasks_ptr : TaskBlocker**, task : Task, has_block
   blocker.blockers_exist_in_thread |= has_blockers_bitmask;
 }
 
-func blocked_tasks_update(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64, num_tasks : usize, tasks : Task*, blocked_tasks : Task*)
+func blocked_tasks_update(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64, num_tasks : usize, blocked_tasks : Task*)
 {
   // reset all
   {
@@ -276,10 +292,11 @@ func blocked_tasks_update(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64
   }
 }
 
-func thread_work_queue_find_index_first_ready(self : ThreadWorkQueue const*) : int
+func thread_work_queue_find_index_first_ready(self: ThreadWorkQueue const*, first_idx: int) : int
 {
-  for (i:= 0; i <self.pending_tasks.len; i++) {
+  for (i:= first_idx; i <self.pending_tasks.len; i++) {
     task := self.pending_tasks.tasks[i];
+    if (self.pending_tasks.executing[i]) { continue; }
     ready := true;
     task_in_blocked := blocked_tasks_bsearch_n(&self.blocked_tasks[0], buf_len(self.blocked_tasks), task);
     if (task_in_blocked.n > 0) {

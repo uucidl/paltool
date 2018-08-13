@@ -24,7 +24,7 @@ func create_task(fn : TaskFunc, data : void*) : Task {
 
 // Mark a dependency between two tasks
 func task_depends_on(task : Task, dependency : Task) {
-  return platform_task_depends_on(task, dependency);
+  platform_task_depends_on(task, dependency);
 }
 
 // Schedule a task to run as soon as possible
