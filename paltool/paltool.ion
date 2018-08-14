@@ -381,14 +381,14 @@ func run_foo(foo : FooTransform*)
 
 struct ImageTask
 {
-  image : Image;
+  image : Image8;
   task : Task;
   task_data : ImageTaskData*;
 }
 
 func image_task_from_file(tasks : ImageTask*, abspath : char*)
 {
-  tasks.image = image_load(abspath, 3);
+  tasks.image = image_load_from_path(abspath, 3);
   num_pixels := tasks.image.width*tasks.image.height;
   ipt96_from_rgb24 := allocate_ipt96_from_rgb24(num_pixels, (:RGB24*)tasks.image.interleaved_channels);
   tasks.task_data = calloc(1, sizeof(*tasks.task_data));

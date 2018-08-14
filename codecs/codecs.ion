@@ -1,30 +1,30 @@
-#foreign(header="stb_image.h")
-
-struct Image
+// An image with 8bit channels
+struct Image8
 {
-  num_channels : int;
-  interleaved_channels : uint8*;
-  width : int;
-  height : int;
+  num_channels: int;
+  interleaved_channels: uint8*;
+  width: int;
+  height: int;
 }
 
 @foreign("stbi_load")
-func stbi_load(filename : char const*, d_x : int*, d_y : int*, d_channels_in_file : int*, desired_channels : int) : uint8*;
+func stbi_load(filename: char const*, d_x: int*, d_y: int*, d_channels_in_file: int*, desired_channels: int) : uint8*;
 
 @foreign("stbi_image_free")
-func stbi_image_free(data : uint8*);
+func stbi_image_free(data: uint8*);
 
-func image_load(filename : char const*, desired_num_channels : int) : Image
+func image_load_from_path(filename: char const*, desired_num_channels: int) : Image8
 {
-  result : Image;
+  result : Image8;
   result.interleaved_channels = stbi_load(filename, &result.width, &result.height, &result.num_channels, desired_num_channels);
   return result;
 }
 
-func image_free(pixels : Image*)
+func image_free(pixels: Image8*)
 {
   stbi_image_free(pixels.interleaved_channels);
   pixels = {};
 }
 
+#foreign(header="stb_image.h")
 #foreign(source="codecs.c")
