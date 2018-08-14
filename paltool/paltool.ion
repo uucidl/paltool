@@ -48,8 +48,8 @@ func main(argc: int, argv: char**) : int
 
   printf("INFO: listing all files from root: %s\n", args.root_dir);
   
-  done : bool;
-  end_task := create_task(done_task, &done);
+  end_task: TerminationTask;
+  termination_task_create(&end_task);
 
   image_tasks : ImageTask*; 
   paths := find_all_files((:uint8*)args.root_dir);
@@ -64,7 +64,7 @@ func main(argc: int, argv: char**) : int
         image : ImageTask;
           abspath : char* = strbuf("%s/%s", args.root_dir, (:char*)file);
           image_task_from_file(&image, abspath);
-          task_depends_on(end_task, image.task);
+          task_depends_on(end_task.task, image.task);
           start_task(image.task);
           // create dependent memory deallocation tasks
 
@@ -89,14 +89,10 @@ func main(argc: int, argv: char**) : int
     return 1; // error
   }
   free_generator(&paths);
-  start_task(end_task);
+  start_task(end_task.task);
 
-  // @todo there should be a way to wait for pending tasks (switch to worker_thread w/ same cpu affinity from within the main thread)
-  // busy loop for remaining tasks
-  // @todo @defect won't work in optimized builds
-  while (!read_bool_atomic(&done)) {
-    // go on
-  }
+  termination_task_wait_for(&end_task);
+  libc.printf("*** ALL DONE ***\n");
 
   // @todo: merge results, count occurrences per area
   hue_counts : HueCounts;
@@ -382,13 +378,6 @@ func run_foo(foo : FooTransform*)
 }
 
 // @todo window colors to not over represent highs and lows
-
-func done_task(data: void*)
-{
-  dest : bool* = data;
-  libc.printf("*** ALL DONE ***\n");
-  write_bool_atomic(dest, true);
-}
 
 struct ImageTask
 {

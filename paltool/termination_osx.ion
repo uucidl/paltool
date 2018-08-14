@@ -1,0 +1,21 @@
+struct TerminationTask
+{
+    task: Task;
+}
+
+func termination_task_create(task: TerminationTask*)
+{
+    *task = {};
+    task.task = create_task(_termination_task, NULL);
+}
+
+func termination_task_wait_for(task: TerminationTask*)
+{
+    #assert(false); // @todo implement termination task on osx
+}
+
+// @type_erasure: data: CONDITION_VARIABLE*
+func _termination_task(data: void*)
+{
+    #assert(false); // @todo implement termination task on osx
+}
