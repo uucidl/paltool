@@ -1,5 +1,5 @@
-import platform.bsd { ... }
-import libc { calloc, free, memcpy, memset, printf, realloc }
+import platform.bsd
+import libc
 import containers { ... }
 
 struct PlatformPathListGenerator
@@ -11,14 +11,14 @@ struct PlatformPathListGenerator
 struct QueryResult
 {
   size       : uint32;
-  attributes : AttributeSet;
+  attributes : bsd.AttributeSet;
   error : uint32;
-  nameinfo : Attrreference;
-  objtype : FSObjType;
-  objtag : FSObjTag;
+  nameinfo : bsd.Attrreference;
+  objtype : bsd.FSObjType;
+  objtag : bsd.FSObjTag;
   union {
     struct {
-      file_totalsize : Off;
+      file_totalsize : bsd.Off;
       file_ioblocksize : uint32;
     }
   }
@@ -26,25 +26,25 @@ struct QueryResult
 }
 
 func unpack_query_result(bytes : uint8 const*, num_bytes : usize) : QueryResult {
-  nameinfo := *((:Attrreference*)&bytes[28]);
+  nameinfo := *((:bsd.Attrreference*)&bytes[28]);
   return {
     size = *((:uint32*)&bytes[0]),
-    attributes = *((:AttributeSet*)&bytes[4]),
+    attributes = *((:bsd.AttributeSet*)&bytes[4]),
     error = *((:uint32*)&bytes[24]),
-    nameinfo = *((:Attrreference*)&bytes[28]),
-    objtype = *((:FSObjType*)&bytes[36]),
-    objtag = *((:FSObjType*)&bytes[40]),
-    file_totalsize = *((:Off*)&bytes[44]),
+    nameinfo = *((:bsd.Attrreference*)&bytes[28]),
+    objtype = *((:bsd.FSObjType*)&bytes[36]),
+    objtag = *((:bsd.FSObjType*)&bytes[40]),
+    file_totalsize = *((:bsd.Off*)&bytes[44]),
     file_ioblocksize = *((:uint32*)&bytes[52]),
     name = (:char*)&bytes[28 + nameinfo.attr_dataoffset],
   };
 }
   
-func make_attrlist_for_QueryResult() : AttrList
+func make_attrlist_for_QueryResult() : bsd.AttrList
 {
-  return make_attrlist({
-      commonattr = ATTR_CMN_RETURNED_ATTRS | ATTR_CMN_ERROR | ATTR_CMN_NAME | ATTR_CMN_OBJTYPE | ATTR_CMN_OBJTAG,
-      fileattr = ATTR_FILE_TOTALSIZE | ATTR_FILE_IOBLOCKSIZE,
+  return bsd.make_attrlist({
+      commonattr = bsd.ATTR_CMN_RETURNED_ATTRS | bsd.ATTR_CMN_ERROR | bsd.ATTR_CMN_NAME | bsd.ATTR_CMN_OBJTYPE | bsd.ATTR_CMN_OBJTAG,
+      fileattr = bsd.ATTR_FILE_TOTALSIZE | bsd.ATTR_FILE_IOBLOCKSIZE,
   });
 }
 
@@ -58,13 +58,13 @@ func make_macos_path_list_generator(root_fd : int) : PlatformPathListGenerator
 func platform_find_all_files(root : uint8 const*) : PathListGenerator
 {
   root_path := (:char const*)root;
-  fd_or_error := open(root_path, O_RDONLY, 0);
+  fd_or_error := bsd.open(root_path, bsd.O_RDONLY, 0);
   if (fd_or_error < 0) {
     return { error = PathListError_InvalidRoot };
   }
   #assert(fd_or_error >= 0);
   root_fd := fd_or_error;
-  resources : PlatformPathListGenerator* = calloc(1, sizeof(PlatformPathListGenerator));
+  resources : PlatformPathListGenerator* = libc.calloc(1, sizeof(PlatformPathListGenerator));
   *resources = make_macos_path_list_generator(root_fd);
   return {
     resources = resources,
@@ -76,15 +76,15 @@ func platform_next_paths(generator : PathListGenerator*)
   #assert(generator.error == PathListError_None);
   root_fd := generator.resources.fd;
   query := make_attrlist_for_QueryResult();
-  options := uint64(FSOPT_NOFOLLOW | FSOPT_REPORT_FULLSIZE | FSOPT_PACK_INVAL_ATTRS);
-  num_entries_or_error := getattrlistbulk(root_fd, &query, &generator.resources.batch_mem[0], sizeof(generator.resources.batch_mem), options);
+  options := uint64(bsd.FSOPT_NOFOLLOW | bsd.FSOPT_REPORT_FULLSIZE | bsd.FSOPT_PACK_INVAL_ATTRS);
+  num_entries_or_error := bsd.getattrlistbulk(root_fd, &query, &generator.resources.batch_mem[0], sizeof(generator.resources.batch_mem), options);
   if (num_entries_or_error < 0) {
-    #assert(errno != EFAULT);
-    #assert(errno != ERANGE);
-    #assert(errno != EINVAL);
-    generator.error = (errno == EBADF || errno == ENOTDIR)
-	? PathListError_InvalidRoot
-        : PathListError_FileSystemError;
+    #assert(bsd.errno != bsd.EFAULT);
+    #assert(bsd.errno != bsd.ERANGE);
+    #assert(bsd.errno != bsd.EINVAL);
+    generator.error = (bsd.errno == bsd.EBADF || bsd.errno == bsd.ENOTDIR)
+      ? PathListError_InvalidRoot
+      : PathListError_FileSystemError;
     return;
   }
 
@@ -109,7 +109,7 @@ func platform_next_paths(generator : PathListGenerator*)
   for (entries_idx := 0; entries_idx < num_entries; entries_idx++) {
   remaining_num_bytes := (:uint8*)&generator.resources.batch_mem[sizeof(generator.resources.batch_mem)/sizeof(generator.resources.batch_mem[0])] - next_entry;
     entry := unpack_query_result(next_entry, remaining_num_bytes);
-    if (entry.objtype == VREG) {
+    if (entry.objtype == bsd.VREG) {
        buf_push(&generator.output.filepaths, &entry.name, sizeof(entry.name));
     } else {
        buf_push(&generator.output.dirpaths, &entry.name, sizeof(entry.name));
@@ -126,8 +126,8 @@ func platform_free_generator(generator : PathListGenerator*)
   buf_free(generator.output.dirpaths);
   if (generator.resources)
   {
-    close(generator.resources.fd);
-    free(generator.resources);
+    bsd.close(generator.resources.fd);
+    libc.free(generator.resources);
     generator.resources = NULL;
   }
 }

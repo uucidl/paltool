@@ -2,10 +2,12 @@
 #foreign(source="kernel32.c")
 
 const CP_UTF8 = 65001;
+const FILE_ATTRIBUTE_DIRECTORY = 0x10;
+const INFINITE = 0xFFFFFFFF;
+
 const INVALID_HANDLE_VALUE = (:void*) -1;
 const MAX_PATH = 256;
 
-const FILE_ATTRIBUTE_DIRECTORY = 0x10;
 
 @foreign("LPTHREAD_START_ROUTINE")
 typedef THREAD_START_ROUTINE = func(lpParameter: LPVOID) : DWORD;

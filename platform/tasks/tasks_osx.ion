@@ -1,22 +1,25 @@
-import .dispatch {...}
-import libc { calloc, puts, realloc, memset, free }
-import datum {...}
-import platform.bsd {bsd_size}
+import .dispatch
 
-var submission_queue : Queue;
-var main_queue : Queue;
+import datum {...}
+
+import libc
+import platform.bsd
+
+var submission_queue : dispatch.Queue;
+var main_queue : dispatch.Queue;
 
 func platform_tasks_init() {
-  submission_queue = queue_create("tasks_submit", NULL);
+  registry_init();
+  submission_queue = dispatch.queue_create("tasks_submit", NULL);
   #assert(submission_queue);
-  main_queue = queue_create("tasks_main", NULL);
-  set_target_queue({_dq=main_queue}, get_global_queue(QUEUE_PRIORITY_DEFAULT, 0));
+  main_queue = dispatch.queue_create("tasks_main", NULL);
+  dispatch.set_target_queue({_dq=main_queue}, dispatch.get_global_queue(dispatch.QUEUE_PRIORITY_DEFAULT, 0));
 }
 
 func platform_tasks_deinit() {
   #assert(submission_queue);
-  release({_dq=submission_queue});
-  release({_dq=main_queue});
+  dispatch.release({_dq=submission_queue});
+  dispatch.release({_dq=main_queue});
   submission_queue = NULL;
   registry_deinit();
 }
@@ -27,7 +30,6 @@ struct NewTaskData
   fn : TaskFunc;
   task : Task;
 }
-
 
 func _add_task_submission_task(opaque_data : void*) {
   data : NewTaskData* = opaque_data;
@@ -41,7 +43,7 @@ func platform_create_task(fn : TaskFunc, data : void*) : Task {
     data = data,
     fn = fn,
   };
-  sync(submission_queue, &submission_data, _add_task_submission_task);
+  dispatch.sync(submission_queue, &submission_data, _add_task_submission_task);
   return submission_data.task;
 }
 
@@ -54,7 +56,7 @@ func run_task_task(opaque_data : void*) {
   data : TaskContent* = opaque_data;
   data.fn(data.data);
   data.fn = NULL; // mark task has completed.
-  free(data);
+  libc.free(data);
 }
 
 // Schedule a task to run as soon as possible
@@ -62,19 +64,15 @@ func platform_start_task(task : Task) {
   // @todo: thread safety with submission
   content := unstarted_discard(&unstarted_tasks, task);
   content_ptr := &content;
-  content_ptr = calloc(1, sizeof(content_ptr[0]));
+  content_ptr = libc.calloc(1, sizeof(content_ptr[0]));
   *content_ptr = content;
-  async(main_queue, content_ptr, run_task_task);
-}
-
-func puts_task(data : void*) {
-  puts((:char*)data);
+  dispatch.async(main_queue, content_ptr, run_task_task);
 }
 
 func _get_num_logical_cpus() : int
 {
   count : int;
-  count_size := (:bsd_size) sizeof(count);
+  count_size := (:bsd.size_t) sizeof(count);
   rc := bsd.sysctlbyname("hw.activecpu", &count, &count_size, NULL, 0);
   if (rc == 0) { return count; }
   rc = bsd.sysctlbyname("hw.logicalcpu", &count, &count_size, NULL, 0);

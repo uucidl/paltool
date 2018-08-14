@@ -1,15 +1,10 @@
 import containers
 
-import platform.win32 { 
-  HANDLE = HANDLE,
-  SRWLOCK = SRWLOCK,
-  SYSTEM_INFO = SYSTEM_INFO,
-  GetSystemInfo = GetSystemInfo,
-}
+import platform.win32
 
 struct WorkerThread
 {
-  lock: SRWLOCK;
+  lock: win32.SRWLOCK;
   idx: int;
   bitmask: int;
   queue: ThreadWorkQueue;
@@ -18,11 +13,11 @@ struct WorkerThread
 struct NativeThreads
 {
   num_threads: usize;
-  thread_handles: HANDLE*;
+  thread_handles: win32.HANDLE*;
   thread_states : WorkerThread*;
 }
 
-var registry_lock : SRWLOCK;
+var registry_lock : win32.SRWLOCK;
 var native_threads : NativeThreads;
 
 // @todo @ion add/show which argument is invalid:
@@ -134,8 +129,8 @@ func platform_start_task(task : Task)
 
 func _get_num_logical_cpus() : int
 {
-  system_info : SYSTEM_INFO;
-  GetSystemInfo(&system_info);
+  system_info : win32.SYSTEM_INFO;
+  win32.GetSystemInfo(&system_info);
   return system_info.dwNumberOfProcessors;
 }
 
