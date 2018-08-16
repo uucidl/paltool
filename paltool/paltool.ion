@@ -89,9 +89,9 @@ func main(argc: int, argv: char**) : int
     return 1; // error
   }
   free_generator(&paths);
-  start_task(end_task.task);
 
-  termination_task_wait_for(&end_task);
+  run_task(end_task.task);
+
   libc.printf("*** ALL DONE ***\n");
 
   // @todo: merge results, count occurrences per area

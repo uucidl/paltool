@@ -2,6 +2,12 @@
 
 #foreign(header="<dispatch/dispatch.h>")
 
+@foreign("DISPATCH_TIME_NOW")
+const TIME_NOW = uint64(0);
+
+@foreign("DISPATCH_TIME_FOREVER")
+const TIME_FOREVER = uint64(~0);
+
 @foreign("DISPATCH_QUEUE_PRIORITY_DEFAULT")
 const QUEUE_PRIORITY_DEFAULT = 0;
 
@@ -14,6 +20,8 @@ const QUEUE_PRIORITY_HIGH = 2;
 @foreign("DISPATCH_QUEUE_PRIORITY_BACKGROUND")
 const QUEUE_PRIORITY_BACKGROUND = INT16_MIN;
 
+@foreign("dispatch_time_t")
+typedef Time = uint64;
 
 @foreign("struct dispatch_queue_s")
 struct QueueObject;
@@ -24,15 +32,22 @@ struct QueueAttrObject;
 @foreign("struct dispatch_object_s")
 struct ObjectObject;
 
+@foreign("struct dispatch_group_s")
+struct GroupObject;
+
 @foreign("dispatch_object_t")
 union Object
 {
 _do : ObjectObject*;
-_dq : QueueObject*;  
+_dq : QueueObject*;
+_dg : GroupObject*;
 }
 
 @foreign("dispatch_queue_t")
 typedef Queue = QueueObject*;
+
+@foreign("dispatch_group_t")
+typedef Group = GroupObject*;
 
 @foreign("dispatch_queue_attr_t")
 typedef QueueAttr = QueueAttrObject*;
@@ -53,7 +68,26 @@ func retain(object : Object);
 func release(object : Object);
 
 @foreign("dispatch_async_f")
-func async(queue : Queue, context : void*, fn : func (context : void*));
+func dispatch_async(queue : Queue, context : void*, fn : func (context : void*));
 
 @foreign("dispatch_sync_f")
-func sync(queue : Queue, context : void*, fn : func (context : void*));
+func dispatch_sync(queue : Queue, context : void*, fn : func (context : void*));
+
+@foreign("dispatch_group_create")
+func group_create() : Group;
+
+@foreign("dispatch_group_wait")
+func group_wait(group: Group, timeout: Time) : long;
+
+@foreign("dispatch_group_enter")
+func group_enter(group: Group);
+
+@foreign("dispatch_group_leave")
+func group_leave(group: Group);
+
+@foreign("dispatch_group_async_f")
+func dispatch_group_async(group: Group, queue: Queue, context: void*, fn: func(context: void*));
+
+@foreign("dispatch_group_notify_f")
+func dispatch_group_notify(group: Group, queue: Queue, context: void*, fn: func(context: void*));
+

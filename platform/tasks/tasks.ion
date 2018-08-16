@@ -32,6 +32,13 @@ func start_task(task : Task) {
   platform_start_task(task);
 }
 
+// Run a task and wait for its completion
+// @todo name: salient feature is to wait for completion, should be
+// somehow mentioned.
+func run_task(task: Task) {
+  platform_run_task(task);
+}
+
 // Comment originally by Per Vognsen:
 //
 // Always assign task workloads that, on average, justify the overhead of

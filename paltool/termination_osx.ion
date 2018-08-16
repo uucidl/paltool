@@ -11,11 +11,12 @@ func termination_task_create(task: TerminationTask*)
 
 func termination_task_wait_for(task: TerminationTask*)
 {
+    while (true) {}
     #assert(false); // @todo implement termination task on osx
 }
 
 // @type_erasure: data: CONDITION_VARIABLE*
 func _termination_task(data: void*)
 {
-    #assert(false); // @todo implement termination task on osx
+   libc.printf("*** ALL DONE ***\n");
 }

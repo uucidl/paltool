@@ -127,6 +127,13 @@ func platform_start_task(task : Task)
   win32.ReleaseSRWLockExclusive(&thread.lock);
 }
 
+func platform_run_task(task: Task)
+{
+  // @todo this is a waitable task: pull it from unstarted, allocate condition var + lock for waiting for it.
+  // then block here until the condition variable has signaled.
+  #assert(false); // @todo: implement me (see above)
+}
+
 func _get_num_logical_cpus() : int
 {
   system_info : win32.SYSTEM_INFO;
