@@ -381,9 +381,9 @@ func run_foo(foo : FooTransform*)
 
 struct ImageTask
 {
-  image : Image8;
-  task : Task;
-  task_data : ImageTaskData*;
+  image: Image8;
+  task: Task;
+  task_data: ImageTaskData*;
 }
 
 func image_task_from_file(tasks : ImageTask*, abspath : char*)
@@ -414,6 +414,7 @@ struct ImageTaskData
   foo : FooTransform;
 }
 
+@type_erased("{opaque_data: ImageTaskData*}")
 func image_task(opaque_data : void*)
 {
   task : ImageTaskData* = opaque_data;
