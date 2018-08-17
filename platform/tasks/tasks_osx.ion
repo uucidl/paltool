@@ -25,8 +25,9 @@ func platform_tasks_init() {
 
 func platform_tasks_deinit() {
   #assert(submission_queue);
-  // do on submission queu
-  for (i:=0; i<groups.len; i++) {
+  dispatch.release({_dq=submission_queue});
+  dispatch.release({_dq=main_queue});
+  for (i:=0; i<buf_len(groups.group_per_task); i++) {
     g := groups.group_per_task[i];
     if (g) {
       dispatch.release({_dg = g});
@@ -34,9 +35,8 @@ func platform_tasks_deinit() {
   }
   buf_free(groups.group_per_task);
   groups.group_per_task = NULL;
-  dispatch.release({_dq=submission_queue});
-  dispatch.release({_dq=main_queue});
   submission_queue = NULL;
+  main_queue = NULL;
   registry_deinit();
 }
 
@@ -147,7 +147,7 @@ func platform_start_task(task : Task) {
     dispatch.group_enter(dispatch_task_data.group);
   }
 
-  wait_on_group: dispatch.Group = groups.group_per_task[idx];
+  wait_on_group: dispatch.Group = idx<groups.len? groups.group_per_task[idx] : NULL;
   if (wait_on_group) {
     dispatch.dispatch_group_notify(wait_on_group, main_queue, dispatch_task_data, run_task_task);
   } else {
@@ -158,7 +158,7 @@ func platform_start_task(task : Task) {
 func platform_run_task(task: Task) {
   // @todo: thread safety with submission
   idx := unpack_idx_from_id(task);
-  wait_on_group: dispatch.Group = groups.group_per_task[idx];
+  wait_on_group: dispatch.Group = idx<groups.len? groups.group_per_task[idx] : NULL;
   if (wait_on_group) {
     err := dispatch.group_wait(wait_on_group, dispatch.TIME_FOREVER);
     #assert(err == 0); // according to manual, must happen with TIME_FOREVER

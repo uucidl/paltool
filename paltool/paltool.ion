@@ -249,10 +249,15 @@ func merge_hue_counts(index : Map*, dest : HueCounts*, src : HueCounts const*)
 
 func pack_su_float(f : float, num_bits : int) : uint32
 {
+  #assert(num_bits > 0 && num_bits < 31);
   one_as_int := 1<<(num_bits-1);
   positive_max := one_as_int - 1;
   one := float(positive_max);
-  return uint32(int32(f*one) << (32-num_bits)) >> (32-num_bits);
+  s := int32(f*one);
+  shift := 32-num_bits;
+  s = s<0? -((-s) << shift) : s << shift;
+  u := uint32(s);
+  return u >> shift;
 }
 
 func unpack_su_float(packed : uint32, num_bits : int) : float

@@ -1,7 +1,4 @@
 import libc {
-    libc_free = free,
-    libc_alloc = calloc,
-    libc_realloc = realloc,
     memcmp,
     memcpy,
     memset,
@@ -39,19 +36,20 @@ func array_alloc(array : Array*, num_elem : usize, elem_size : usize) : Array*
     needed_size := mul_with_overflow_check_usize(num_elem, elem_size);
     needed_capacity := needed_size;
     if (!array) {
-       array = libc_alloc(1, sizeof(Array) + needed_capacity);
+       array = libc.calloc(1, sizeof(Array) + needed_capacity);
         *array = {
             capacity = needed_capacity,
             magic = ArrayMagic,
             elem_size = elem_size,
         }; 
+        memset(&array.bytes[0], 0, array.capacity);
     } else if (array.capacity < needed_capacity) {
         #assert(elem_size == array.elem_size);
         old_capacity := array.capacity;
         next_capacity := 1 + old_capacity * 2;
         new_capacity := needed_capacity>next_capacity? needed_capacity:next_capacity;
         array.magic = 1; 
-        array = libc_realloc(array, sizeof(Array) + new_capacity);
+        array = libc.realloc(array, sizeof(Array) + new_capacity);
         memset(&array.bytes[old_capacity], 0, new_capacity - old_capacity);
         array.capacity = new_capacity;
         array.magic = ArrayMagic;
@@ -100,8 +98,15 @@ func test_array()
         array = array_alloc(array, 0, 2);
         #assert(array);
         #assert(array_length(array) == 0);
+	array = array_reset(array);
+    }
+    {
+        array : Array*;
         array = array_alloc(array, 8, 2);
         #assert(array.size == 16);
+	for (i:=0; i<array.size; i++) {
+	  #assert(array.bytes[i] == 0);
+	}
         #assert(array_length(array) == 8);
         for (i:=0; i<array_length(array); i++) {
             array.bytes[2*i] = 'a'+i;
