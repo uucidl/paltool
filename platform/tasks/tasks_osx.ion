@@ -27,7 +27,13 @@ func platform_tasks_deinit() {
   #assert(submission_queue);
   // do on submission queu
   for (i:=0; i<groups.len; i++) {
+    g := groups.group_per_task[i];
+    if (g) {
+      dispatch.release({_dg = g});
+    }
   }
+  buf_free(groups.group_per_task);
+  groups.group_per_task = NULL;
   dispatch.release({_dq=submission_queue});
   dispatch.release({_dq=main_queue});
   submission_queue = NULL;
@@ -60,6 +66,7 @@ func _depends_on_submission_task(opaque_data: void*) {
 
   group: dispatch.Group*;
   group = buf_alloc_at(&groups.group_per_task, sizeof(*group), unpack_idx_from_id(data.task));
+  groups.len = buf_len(groups.group_per_task);
   if (!*group) {
     *group = dispatch.group_create();
     #assert(*group);
@@ -86,12 +93,37 @@ func platform_task_depends_on(task : Task, dependency : Task) {
   dispatch.dispatch_sync(submission_queue, &depends_on_data, _depends_on_submission_task);
 }
 
+struct DispatchTaskData
+{
+  content: TaskContent;
+  group: dispatch.Group;
+}
+
+@type_erased("{opaque_data: DispatchTaskData*}")
 func run_task_task(opaque_data : void*) {
-  data : TaskContent* = opaque_data;
-  data.fn(data.data);
-  data.fn = NULL; // mark task has completed.
+  data : DispatchTaskData* = opaque_data;
+  data.content.fn(data.content.data);
+  if (data.group) {
+    dispatch.group_leave(data.group);
+    dispatch.release({ _dg = data.group });
+  }
   libc.free(data);
 }
+
+func _make_dispatch_task_data(unstarted : UnstartedTask) : DispatchTaskData* {
+  blocked_task := unstarted.task_being_blocked;
+  group: dispatch.Group;
+  if (blocked_task.value) {
+    group = groups.group_per_task[unpack_idx_from_id(blocked_task)];
+    #assert(group);
+  }
+  result: DispatchTaskData*;
+  result = libc.calloc(1, sizeof(*result));
+  result.content = unstarted.content;
+  result.group = group;
+  return result;
+}
+
 
 // Schedule a task to run as soon as possible
 func platform_start_task(task : Task) {
@@ -106,27 +138,20 @@ func platform_start_task(task : Task) {
   // @todo: thread safety with submission
   idx := unpack_idx_from_id(task);
   blocked_task := unstarted_tasks.buf[idx].task_being_blocked;
-  group: dispatch.Group;
-  if (blocked_task.value) {
-    group = groups.group_per_task[unpack_idx_from_id(blocked_task)];
-    #assert(group);
-  }
-  wait_on_group: dispatch.Group = groups.group_per_task[idx];
-  
-  content := unstarted_discard(&unstarted_tasks, task);
-  content_ptr := &content;
-  content_ptr = libc.calloc(1, sizeof(content_ptr[0]));
-  *content_ptr = content;
 
-  // @todo what if you have a task that waits for predecessors
-  // and also has other tasks waiting for it?
-  // Is it all easier if expressed in terms of group enter/leave?
-  if (group) {
-    dispatch.dispatch_group_async(group, main_queue, content_ptr, run_task_task);
-  } else if (wait_on_group) {
-    dispatch.dispatch_group_notify(wait_on_group, main_queue, content_ptr, run_task_task);
+  dispatch_task_data := _make_dispatch_task_data(unstarted_tasks.buf[idx]);
+  unstarted_discard(&unstarted_tasks, task);
+
+  if (dispatch_task_data.group) {
+    dispatch.retain({_dg = dispatch_task_data.group });
+    dispatch.group_enter(dispatch_task_data.group);
+  }
+
+  wait_on_group: dispatch.Group = groups.group_per_task[idx];
+  if (wait_on_group) {
+    dispatch.dispatch_group_notify(wait_on_group, main_queue, dispatch_task_data, run_task_task);
   } else {
-    dispatch.dispatch_async(main_queue, content_ptr, run_task_task);
+    dispatch.dispatch_async(main_queue, dispatch_task_data, run_task_task);
   }
 }
 
@@ -138,11 +163,14 @@ func platform_run_task(task: Task) {
     err := dispatch.group_wait(wait_on_group, dispatch.TIME_FOREVER);
     #assert(err == 0); // according to manual, must happen with TIME_FOREVER
   }
-  content := unstarted_discard(&unstarted_tasks, task);
-  content_ptr := &content;
-  content_ptr = libc.calloc(1, sizeof(content_ptr[0]));
-  *content_ptr = content;
-  dispatch.dispatch_sync(main_queue, content_ptr, run_task_task);
+  dispatch_task_data := _make_dispatch_task_data(unstarted_tasks.buf[idx]);
+  unstarted_discard(&unstarted_tasks, task);
+
+  if (dispatch_task_data.group) {
+    dispatch.retain({_dg = dispatch_task_data.group });
+    dispatch.group_enter(dispatch_task_data.group);
+  }
+  dispatch.dispatch_sync(main_queue, dispatch_task_data, run_task_task);
 }
 
 func _get_num_logical_cpus() : int
