@@ -1,4 +1,0 @@
-// func termination_task_create(task: TerminationTask*);
-// func termination_task_wait_for(task: TerminationTask*);
-
-

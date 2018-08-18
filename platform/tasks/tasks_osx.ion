@@ -155,7 +155,7 @@ func platform_start_task(task : Task) {
   }
 }
 
-func platform_run_task(task: Task) {
+func platform_run_task_and_wait(task: Task) {
   // @todo: thread safety with submission
   idx := unpack_idx_from_id(task);
   wait_on_group: dispatch.Group = idx<groups.len? groups.group_per_task[idx] : NULL;

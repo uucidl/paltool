@@ -32,15 +32,15 @@ func test_unstarted()
 
 func test_thread_work_queue_setup(queue : ThreadWorkQueue*, gen : int)
 {
-  pending_tasks_add(&queue.pending_tasks, pack_id(1, gen), {0}, {data=(:void*)1, fn=dummy_task_fn});
-  pending_tasks_add(&queue.pending_tasks, pack_id(2, gen), pack_id(1, gen), {data=(:void*)2, fn=dummy_task_fn});
-  pending_tasks_add(&queue.pending_tasks, pack_id(3, gen), {0}, {data=(:void*)4, fn=dummy_task_fn});
+  pending_tasks_add(&queue.pending_tasks, pack_id(1, gen), {0}, {data=(:void*)1, fn=dummy_task_fn}, NULL);
+  pending_tasks_add(&queue.pending_tasks, pack_id(2, gen), pack_id(1, gen), {data=(:void*)2, fn=dummy_task_fn}, NULL);
+  pending_tasks_add(&queue.pending_tasks, pack_id(3, gen), {0}, {data=(:void*)4, fn=dummy_task_fn}, NULL);
   #assert(3 == queue.pending_tasks.len);
   #assert(0 == thread_work_queue_find_index_first_ready(queue, 0));
   blocked_tasks_update(queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.blocks);
   #assert(1 == thread_work_queue_find_index_first_ready(queue, 0));
 
-  pending_tasks_add(&queue.pending_tasks, pack_id(4, gen), pack_id(2, gen), {data=(:void*)3, fn=dummy_task_fn});
+  pending_tasks_add(&queue.pending_tasks, pack_id(4, gen), pack_id(2, gen), {data=(:void*)3, fn=dummy_task_fn}, NULL);
   blocked_tasks_update(queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.blocks);
 }
 
@@ -49,9 +49,9 @@ func test_thread_work_queue_find_first_ready()
   queue : ThreadWorkQueue;
   #assert(0 == thread_work_queue_find_index_first_ready(&queue, 0));
   gen : int = 0;
-  pending_tasks_add(&queue.pending_tasks, pack_id(1, gen), pack_id(2, gen), {data=(:void*)1, fn=dummy_task_fn});
-  pending_tasks_add(&queue.pending_tasks, pack_id(2, gen), {0}, {data=(:void*)2, fn=dummy_task_fn});
-  pending_tasks_add(&queue.pending_tasks, pack_id(3, gen), {0}, {data=(:void*)4, fn=dummy_task_fn});
+  pending_tasks_add(&queue.pending_tasks, pack_id(1, gen), pack_id(2, gen), {data=(:void*)1, fn=dummy_task_fn}, NULL);
+  pending_tasks_add(&queue.pending_tasks, pack_id(2, gen), {0}, {data=(:void*)2, fn=dummy_task_fn}, NULL);
+  pending_tasks_add(&queue.pending_tasks, pack_id(3, gen), {0}, {data=(:void*)4, fn=dummy_task_fn}, NULL);
   blocked_tasks_update(&queue, 0b1, queue.pending_tasks.len, queue.pending_tasks.blocks);
   #assert(0 == thread_work_queue_find_index_first_ready(&queue, 0));
   #assert(2 == thread_work_queue_find_index_first_ready(&queue, 0 + 1));

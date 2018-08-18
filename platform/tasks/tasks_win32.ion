@@ -96,27 +96,23 @@ func platform_task_depends_on(task : Task, dependency : Task)
   win32.ReleaseSRWLockExclusive(&registry_lock);
 }
 
-// Schedule a task to run as soon as possible
-func platform_start_task(task : Task)
+func _start_task(task: Task, termination: Termination*)
 {
+  #assert(native_threads.num_threads != 0);
+  // @todo @error_handling
+
   win32.AcquireSRWLockExclusive(&registry_lock);
+  #assert(!unstarted_blocker_exists_for(&unstarted_tasks, task));
   task_being_blocked := unstarted_tasks.buf[unpack_idx_from_id(task)].task_being_blocked;
   content := unstarted_discard(&unstarted_tasks, task);
-  #assert(!unstarted_blocker_exists_for(&unstarted_tasks, task));
   win32.ReleaseSRWLockExclusive(&registry_lock);
-
-  if (native_threads.num_threads == 0) {
-    content.fn(content.data);
-    #assert(false); // implement running the task being blocked
-    return;
-  }
 
   thread := &native_threads.thread_states[
     pick_thread_idx(content, native_threads.num_threads)
   ];
 
   win32.AcquireSRWLockExclusive(&thread.lock);
-  pending_tasks_add(&thread.queue.pending_tasks, task, task_being_blocked, content);
+  pending_tasks_add(&thread.queue.pending_tasks, task, task_being_blocked, content, termination);
   blocked_tasks_update(&thread.queue, thread.bitmask, thread.queue.pending_tasks.len, thread.queue.pending_tasks.blocks);
   for (other_thread_idx := (thread.idx + 1) % native_threads.num_threads; other_thread_idx != thread.idx; other_thread_idx = (other_thread_idx + 1) % native_threads.num_threads) {
     other_thread := &native_threads.thread_states[other_thread_idx];
@@ -127,11 +123,24 @@ func platform_start_task(task : Task)
   win32.ReleaseSRWLockExclusive(&thread.lock);
 }
 
-func platform_run_task(task: Task)
+// Schedule a task to run as soon as possible
+func platform_start_task(task : Task)
 {
-  // @todo this is a waitable task: pull it from unstarted, allocate condition var + lock for waiting for it.
-  // then block here until the condition variable has signaled.
-  #assert(false); // @todo: implement me (see above)
+  _start_task(task, NULL);
+}
+
+struct Termination
+{
+  lock: win32.SRWLOCK;
+  cv: win32.CONDITION_VARIABLE;
+}
+
+func platform_run_task_and_wait(task: Task)
+{
+  termination: Termination;
+  win32.AcquireSRWLockExclusive(&termination.lock);
+  _start_task(task, &termination);
+  win32.SleepConditionVariableSRW(&termination.cv, &termination.lock, win32.INFINITE, 0);
 }
 
 func _get_num_logical_cpus() : int
@@ -147,6 +156,7 @@ func task_core_worker(lpParameter: void*) : uint32
   while (true) {
     task: Task;
     content: TaskContent;
+    termination: Termination*;
     win32.AcquireSRWLockExclusive(&thread.lock);
     {
       blocked_tasks_update(&thread.queue, thread.bitmask, thread.queue.pending_tasks.len, thread.queue.pending_tasks.blocks);
@@ -155,6 +165,7 @@ func task_core_worker(lpParameter: void*) : uint32
         thread.queue.pending_tasks.executing[ready_idx] = true;
         task = thread.queue.pending_tasks.tasks[ready_idx];
         content = thread.queue.pending_tasks.contents[ready_idx];
+        termination = thread.queue.pending_tasks.data[ready_idx];
       }
     }
     // @todo for any task not blocked anymore by ourselves, check if it is still blocked by other threads
@@ -175,6 +186,9 @@ func task_core_worker(lpParameter: void*) : uint32
         pending_tasks_remove(&thread.queue.pending_tasks, ready_idx); 
       }
       win32.ReleaseSRWLockExclusive(&thread.lock);
+      if (termination) {
+        win32.WakeAllConditionVariable(&termination.cv);
+      }
     } else {
       // verify if maybe one of our tasks being blocked by other threads is free now?
 
@@ -190,8 +204,10 @@ func task_core_worker(lpParameter: void*) : uint32
         blocked_tasks_update(&thread.queue, other_thread.bitmask, other_thread.queue.pending_tasks.len, other_thread.queue.pending_tasks.blocks);
 
         if (ready_idx < other_thread.queue.pending_tasks.len) {
+          dest := &thread.queue.pending_tasks;
+          src := &other_thread.queue.pending_tasks;
           win32.AcquireSRWLockExclusive(&thread.lock);
-          pending_tasks_add(&thread.queue.pending_tasks, other_thread.queue.pending_tasks.tasks[ready_idx], other_thread.queue.pending_tasks.blocks[ready_idx], other_thread.queue.pending_tasks.contents[ready_idx]);
+          pending_tasks_add(dest, src.tasks[ready_idx], src.blocks[ready_idx], src.contents[ready_idx], src.data[ready_idx]);
           pending_tasks_remove(&other_thread.queue.pending_tasks, ready_idx);
           win32.ReleaseSRWLockExclusive(&thread.lock);
           got_one = true;

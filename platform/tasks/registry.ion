@@ -53,6 +53,7 @@ struct PendingTasks
     blocks : Task*; // task that is released when ours is done
     contents : TaskContent*;
     executing : bool*;
+    data: void**;
 }
 
 func Task_compare(a : Task const, b : Task const) : int
@@ -135,17 +136,19 @@ func unstarted_depends_on(self : UnstartedTasks*, id : Task, predecessor_id : Ta
   self.buf[unpack_idx_from_id(predecessor_id)].task_being_blocked = id;
 }
 
-func pending_tasks_add(dest : PendingTasks*, task : Task, blocked_task : Task, content : TaskContent)
+func pending_tasks_add(dest : PendingTasks*, task : Task, blocked_task : Task, content : TaskContent, opaque_data: void*)
 {
   *(:Task*)buf_alloc_at(&dest.tasks, sizeof(dest.tasks[0]), dest.len) = task;
   *(:Task*)buf_alloc_at(&dest.blocks, sizeof(dest.blocks[0]), dest.len) = blocked_task;
   *(:TaskContent*)buf_alloc_at(&dest.contents, sizeof(dest.contents[0]), dest.len) = content;
   *(:bool*)buf_alloc_at(&dest.executing, sizeof(dest.executing[0]), dest.len) = false;
+  *(:void**)buf_alloc_at(&dest.data, sizeof(dest.data[0]), dest.len) = opaque_data;
   dest.len++;
   #assert(dest.len == buf_len(dest.tasks));
   #assert(dest.len == buf_len(dest.blocks));
   #assert(dest.len == buf_len(dest.contents));
   #assert(dest.len == buf_len(dest.executing));
+  #assert(dest.len == buf_len(dest.data));
   dest.cap = dest.len;
 }
 
@@ -171,11 +174,13 @@ func pending_tasks_remove(dest : PendingTasks*, idx : usize)
   elemshift_left(&dest.blocks[idx], sizeof(dest.blocks[0]), dest.len - idx);
   elemshift_left(&dest.contents[idx], sizeof(dest.contents[0]), dest.len - idx);
   elemshift_left(&dest.executing[idx], sizeof(dest.executing[0]), dest.len - idx);
+  elemshift_left(&dest.data[idx], sizeof(dest.data[0]), dest.len - idx);
   dest.len--;
   containers.buf_hdr_mutable(dest.tasks).size -= sizeof(dest.tasks[0]);
   containers.buf_hdr_mutable(dest.blocks).size -= sizeof(dest.blocks[0]);
   containers.buf_hdr_mutable(dest.contents).size -= sizeof(dest.contents[0]);
   containers.buf_hdr_mutable(dest.executing).size -= sizeof(dest.executing[0]);
+  containers.buf_hdr_mutable(dest.data).size -= sizeof(dest.data[0]);
 }
 
 struct CountedRange

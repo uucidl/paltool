@@ -33,10 +33,8 @@ func start_task(task : Task) {
 }
 
 // Run a task and wait for its completion
-// @todo name: salient feature is to wait for completion, should be
-// somehow mentioned.
-func run_task(task: Task) {
-  platform_run_task(task);
+func run_task_and_wait(task: Task) {
+  platform_run_task_and_wait(task);
 }
 
 // Comment originally by Per Vognsen:
