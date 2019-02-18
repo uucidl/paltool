@@ -1,4 +1,5 @@
 @echo off
+setlocal
 REM User Configuration
 REM ==================
 set HereDir=%~d0%~p0.
