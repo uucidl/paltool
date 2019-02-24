@@ -15,6 +15,7 @@ if not exist "%OutputDir%" mkdir "%OutputDir%"
 if not exist "%ObjDir%" mkdir "%ObjDir%"
 if %errorlevel% neq 0 exit /b 1
 
+call :build_test_module containers_tests || exit /b 1
 call :build_test_module filesystem_tests || exit /b 1
 call :build_test_module tasks_tests || exit /b 1
 call :test_module paltool || exit /b 1
