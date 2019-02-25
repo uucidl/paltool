@@ -1,6 +1,6 @@
 import datum {...}
-import containers {...}
 import libc
+import std
 
 var unstarted_tasks : UnstartedTasks;
 
@@ -10,7 +10,7 @@ func registry_init()
 
 func registry_deinit()
 {
-  buf_free(unstarted_tasks.buf);
+  std.afree(unstarted_tasks.buf);
   unstarted_tasks = {};
 }
 
@@ -35,7 +35,7 @@ struct UnstartedTasks
 
 struct ThreadWorkQueue
 {
-  blocked_tasks : TaskBlocker*;
+  blocked_tasks : TaskBlocker*; // maintained in sorted order.
   pending_tasks : PendingTasks;
 }
 
@@ -79,24 +79,26 @@ func pack_id(idx : usize, generation : int) : Task
 func unstarted_create(self : UnstartedTasks*, content : TaskContent) : Task
 {
   // allocate null task
-  buf_alloc_at(&self.buf, sizeof(self.buf[0]), 0);
-
-  n := buf_len(self.buf);
-  idx := n;
-  for (i:=1; i<n; i++) {
+  if (std.alen(self.buf) < 1) {
+    std.apush(self.buf, {});
+  }
+  // get first available or allocate one:
+  n := std.alen(self.buf);
+  i := 1;
+  for (; i<n; i++) {
     if (!self.buf[i].content.fn) {
-      idx = i;
       break;
     }
   }
-  if (idx == n) {
-    buf_alloc_at(&self.buf, sizeof(self.buf[0]), idx);
-    self.cap = buf_len(self.buf);
+  if (i == n) {
+    std.apush(self.buf, {});
+    self.cap = std.alen(self.buf);
   }
-  #assert(idx < buf_len(self.buf));
-  unstarted_task := &self.buf[idx];
+  #assert(i < std.alen(self.buf));
+
+  unstarted_task := &self.buf[i];
   *unstarted_task = {
-    id = pack_id(idx, unpack_generation_from_id(unstarted_task.id)+1),
+    id = pack_id(i, unpack_generation_from_id(unstarted_task.id)+1),
     content = content,
   };
   return unstarted_task.id;
@@ -105,18 +107,17 @@ func unstarted_create(self : UnstartedTasks*, content : TaskContent) : Task
 func unstarted_blocker_exists_for(self: UnstartedTasks*, task: Task) : bool
 {
   check_valid_id(self, task);
-  for (ut := &self.buf[0]; ut < &self.buf[buf_len(self.buf)]; ut++) {
+  for (ut := &self.buf[0]; ut < &self.buf[std.alen(self.buf)]; ut++) {
     if (!ut.content.fn) { continue; }
     if (Task_compare(ut.task_being_blocked, task) == 0) { return true; }
   }
   return false;
 }
 
-
 func check_valid_id(self : UnstartedTasks*, id : Task)
 {
   idx := unpack_idx_from_id(id);
-  #assert(idx < buf_len(self.buf));
+  #assert(idx < std.alen(self.buf));
   #assert(id.value == self.buf[idx].id.value);
 }
 
@@ -138,31 +139,29 @@ func unstarted_depends_on(self : UnstartedTasks*, id : Task, predecessor_id : Ta
 
 func pending_tasks_add(dest : PendingTasks*, task : Task, blocked_task : Task, content : TaskContent, opaque_data: void*)
 {
-  *(:Task*)buf_alloc_at(&dest.tasks, sizeof(dest.tasks[0]), dest.len) = task;
-  *(:Task*)buf_alloc_at(&dest.blocks, sizeof(dest.blocks[0]), dest.len) = blocked_task;
-  *(:TaskContent*)buf_alloc_at(&dest.contents, sizeof(dest.contents[0]), dest.len) = content;
-  *(:bool*)buf_alloc_at(&dest.executing, sizeof(dest.executing[0]), dest.len) = false;
-  *(:void**)buf_alloc_at(&dest.data, sizeof(dest.data[0]), dest.len) = opaque_data;
+  std.apush(dest.tasks, task);
+  std.apush(dest.blocks, blocked_task);
+  std.apush(dest.contents, content);
+  std.apush(dest.executing, false);
+  std.apush(dest.data, opaque_data);
   dest.len++;
-  #assert(dest.len == buf_len(dest.tasks));
-  #assert(dest.len == buf_len(dest.blocks));
-  #assert(dest.len == buf_len(dest.contents));
-  #assert(dest.len == buf_len(dest.executing));
-  #assert(dest.len == buf_len(dest.data));
+  #assert(dest.len == std.alen(dest.tasks));
+  #assert(dest.len == std.alen(dest.blocks));
+  #assert(dest.len == std.alen(dest.contents));
+  #assert(dest.len == std.alen(dest.executing));
+  #assert(dest.len == std.alen(dest.data));
   dest.cap = dest.len;
 }
 
 // valid range: [first,num_elems)
 // post: [first,num_elems-1) <- [first+1,num_elems-1) 
-func elemshift_left(first : void*, elem_size : usize, num_elems : usize)
-{
+func elemshift_left(first : void*, elem_size : usize, num_elems : usize) {
   libc.memmove(first, (:uint8*)first+elem_size, elem_size * (num_elems - 1));
 }
 
 // valid range: [first,num_elems)
 // post: [first+1,num_elems-1) <- [first,num_elems-1) 
-func elemshift_right(first : void*, elem_size : usize, num_elems : usize)
-{
+func elemshift_right(first : void*, elem_size : usize, num_elems : usize) {
   libc.memmove((:uint8*)first+elem_size, (:uint8*)first, elem_size * (num_elems - 1));
 }
 
@@ -170,17 +169,17 @@ func elemshift_right(first : void*, elem_size : usize, num_elems : usize)
 func pending_tasks_remove(dest : PendingTasks*, idx : usize)
 {
   #assert(idx < dest.len);
-  elemshift_left(&dest.tasks[idx], sizeof(dest.tasks[0]), dest.len - idx);
-  elemshift_left(&dest.blocks[idx], sizeof(dest.blocks[0]), dest.len - idx);
-  elemshift_left(&dest.contents[idx], sizeof(dest.contents[0]), dest.len - idx);
-  elemshift_left(&dest.executing[idx], sizeof(dest.executing[0]), dest.len - idx);
-  elemshift_left(&dest.data[idx], sizeof(dest.data[0]), dest.len - idx);
+  std.adeli(dest.tasks, idx);
+  std.adeli(dest.blocks, idx);
+  std.adeli(dest.contents, idx);
+  std.adeli(dest.executing, idx);
+  std.adeli(dest.data, idx);
   dest.len--;
-  containers.buf_hdr_mutable(dest.tasks).size -= sizeof(dest.tasks[0]);
-  containers.buf_hdr_mutable(dest.blocks).size -= sizeof(dest.blocks[0]);
-  containers.buf_hdr_mutable(dest.contents).size -= sizeof(dest.contents[0]);
-  containers.buf_hdr_mutable(dest.executing).size -= sizeof(dest.executing[0]);
-  containers.buf_hdr_mutable(dest.data).size -= sizeof(dest.data[0]);
+  #assert(dest.len == std.alen(dest.tasks));
+  #assert(dest.len == std.alen(dest.blocks));
+  #assert(dest.len == std.alen(dest.contents));
+  #assert(dest.len == std.alen(dest.executing));
+  #assert(dest.len == std.alen(dest.data));
 }
 
 struct CountedRange
@@ -249,8 +248,9 @@ func blocked_tasks_bsearch_upper_bound_n(blocked_tasks: TaskBlocker const *, num
 
 func blocked_tasks_put(blocked_tasks_ptr : TaskBlocker**, task : Task, has_blockers_bitmask : uint64)
 {
-  range := blocked_tasks_bsearch_n(*blocked_tasks_ptr, buf_len(*blocked_tasks_ptr), task);
+  range := blocked_tasks_bsearch_n(*blocked_tasks_ptr, std.alen(*blocked_tasks_ptr), task);
   blocker : TaskBlocker*;
+  // allocate blocker from the sorted list:
   if (range.n == 0) {
     // find free spot
     free_spot := range.pos;
@@ -261,10 +261,9 @@ func blocked_tasks_put(blocked_tasks_ptr : TaskBlocker**, task : Task, has_block
       blocker = &(*blocked_tasks_ptr)[free_spot];
     } else {
       // add one
-      buf_alloc_at(blocked_tasks_ptr, sizeof(*blocked_tasks_ptr[0]), buf_len(*blocked_tasks_ptr));
+      std.apush(*blocked_tasks_ptr, {});
       blocked := *blocked_tasks_ptr;
-      n := buf_len(blocked);
-      elemshift_right(&blocked[range.pos], sizeof(*blocked), n - range.pos);
+      elemshift_right(&blocked[range.pos], sizeof(*blocked), std.alen(blocked) - range.pos);
       blocker = &blocked[range.pos];
     }
   } else {
@@ -279,7 +278,7 @@ func blocked_tasks_update(dest : ThreadWorkQueue*, has_blockers_bitmask : uint64
 {
   // reset all
   {
-    n:=buf_len(dest.blocked_tasks);
+    n:=std.alen(dest.blocked_tasks);
     for (i:=0; i<n; i++) {
       dest.blocked_tasks[i].blockers_exist_in_thread &= ~has_blockers_bitmask;
     }
@@ -303,7 +302,7 @@ func thread_work_queue_find_index_first_ready(self: ThreadWorkQueue const*, firs
     task := self.pending_tasks.tasks[i];
     if (self.pending_tasks.executing[i]) { continue; }
     ready := true;
-    task_in_blocked := blocked_tasks_bsearch_n(&self.blocked_tasks[0], buf_len(self.blocked_tasks), task);
+    task_in_blocked := blocked_tasks_bsearch_n(&self.blocked_tasks[0], std.alen(self.blocked_tasks), task);
     if (task_in_blocked.n > 0) {
       #assert(task_in_blocked.n == 1);
       ready = !self.blocked_tasks[task_in_blocked.pos].blockers_exist_in_thread;

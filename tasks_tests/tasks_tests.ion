@@ -1,7 +1,8 @@
 import platform.tasks {...}
-import libc {...}
+
 import datum {...}
-import containers {...}
+import libc
+import std
 
 func dummy_task_fn(data : void*)
 {
@@ -80,18 +81,18 @@ func test_thread_work_queue()
   #assert(queue.pending_tasks.len == 0);
   
   // Verify we're reusing the storage rather than growing it
-  old_blocked_tasks_cap := containers.buf_cap(queue.blocked_tasks);
-  old_pending_tasks_cap := containers.buf_cap(queue.pending_tasks.tasks);
+  old_blocked_tasks_cap := std.acap(queue.blocked_tasks);
+  old_pending_tasks_cap := std.acap(queue.pending_tasks.tasks);
   test_thread_work_queue_setup(&queue, 1);
-  #assert(containers.buf_cap(queue.blocked_tasks) == old_blocked_tasks_cap);
-  #assert(containers.buf_cap(queue.pending_tasks.tasks) == old_pending_tasks_cap);
+  #assert(std.acap(queue.blocked_tasks) == old_blocked_tasks_cap);
+  #assert(std.acap(queue.pending_tasks.tasks) == old_pending_tasks_cap);
   #assert(queue.pending_tasks.len == 4);
 }
 
 func main(argc : int, argv: char**) : int
 {
   num_cpus := _get_num_logical_cpus();
-  printf("num_logical_cpus\t%d\n", num_cpus);
+  libc.printf("num_logical_cpus\t%d\n", num_cpus);
   test_unstarted();
   test_thread_work_queue_find_first_ready();
   test_thread_work_queue();

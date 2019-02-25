@@ -8,22 +8,25 @@ struct Image8
 }
 
 @foreign("stbi_load")
-func stbi_load(filename: char const*, d_x: int*, d_y: int*, d_channels_in_file: int*, desired_channels: int) : uint8*;
+func stbi_load(
+  path: char const*,
+  d_width: int*, d_height: int*, d_num_channels: int*,
+  num_channels: int): uint8*;
 
 @foreign("stbi_image_free")
 func stbi_image_free(data: uint8*);
 
-func image_load_from_path(filename: char const*, desired_num_channels: int) : Image8
-{
-  result : Image8;
-  result.interleaved_channels = stbi_load(filename, &result.width, &result.height, &result.num_channels, desired_num_channels);
+func image_load_from_path(path: char const*, num_channels: int): Image8 {
+  result: Image8;
+  result.interleaved_channels =
+    stbi_load(path, &result.width, &result.height, &result.num_channels,
+      num_channels);
   return result;
 }
 
-func image_free(pixels: Image8*)
-{
-  stbi_image_free(pixels.interleaved_channels);
-  pixels = {};
+func image_free(image: Image8*) {
+  stbi_image_free(image.interleaved_channels);
+  image = {};
 }
 
 #foreign(header="stb_image.h")

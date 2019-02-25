@@ -1,3 +1,7 @@
+// 2019-03-02: Obsoleted.
+// These containers are obsolete now that the ion standard library (std)
+// includes much more convenient ones.
+
 import libc {
   libc_calloc = calloc,
   libc_malloc = malloc,

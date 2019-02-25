@@ -1,92 +1,98 @@
-func buf_cap(opaque_buf : void const*) : usize
+// 2019-03-02: Obsoleted.
+// These containers are obsolete now that the ion standard library (std)
+// includes much more convenient ones.
+
+func buf_cap(opaque_buf : void const*, elem_stride: usize) : usize
 {
-  return array_capacity(buf_hdr(opaque_buf));
+  return array_capacity(buf_hdr(opaque_buf, elem_stride));
 }
 
-func buf_size(opaque_buf : void const*) : usize
+func buf_size(opaque_buf : void const*, elem_stride: usize) : usize
 {
-  return array_size(buf_hdr(opaque_buf));
+  return array_size(buf_hdr(opaque_buf, elem_stride));
 }
 
-func buf_len(opaque_buf : void const*) : usize
+func buf_len(opaque_buf : void const*, elem_stride: usize) : usize
 {
-  return array_length(buf_hdr(opaque_buf));
+  return array_length(buf_hdr(opaque_buf, elem_stride));
 }
 
-func buf_push(opaque_buf_ptr : void*, elem : void*, elem_size : usize)
+func buf_push(opaque_buf_ptr : void*, elem : void*, elem_size : usize, elem_stride: usize)
 {
   buf_ptr := (:void**)opaque_buf_ptr;
-  *buf_ptr = buf_fit(*buf_ptr, elem_size, 1);
-  buf__add_n(*buf_ptr, elem, elem_size, 1);
+  *buf_ptr = buf_fit(*buf_ptr, elem_size, elem_stride, 1);
+  buf__add_n(*buf_ptr, elem, elem_size, elem_stride, 1);
 }
 
-func buf_alloc_at(opaque_buf_ptr : void*, elem_size : usize, elem_idx : usize) : void*
+func buf_alloc_at(opaque_buf_ptr : void*, elem_size : usize, elem_stride: usize, elem_idx : usize) : void*
 {
   buf_ptr := (:void**)opaque_buf_ptr;
-  hdr := buf_hdr_mutable(*buf_ptr);
+  hdr := buf_hdr_mutable(*buf_ptr, elem_stride);
   if (elem_idx >= array_length(hdr)) {
-    hdr = array_alloc(hdr, 1+elem_idx, elem_size);
-    *buf_ptr = &hdr.bytes[0];
+    hdr = array_alloc(hdr, 1+elem_idx, elem_size, elem_stride);
+    *buf_ptr = array_data(hdr);
   }
-  return &hdr.bytes[elem_size * elem_idx];
+  bytes := (:char*)array_data(hdr);
+  return &bytes[elem_size * elem_idx];
 }
 
-func buf_free(opaque_buf : void*)
+func buf_free(opaque_buf : void*, elem_stride: usize)
 {
-  array_reset(buf_hdr_mutable(opaque_buf));
+  array_reset(buf_hdr_mutable(opaque_buf, elem_stride));
 }
 
-func buf_fit(opaque_buf : void*, elem_size : usize, num_added : usize) : void*
+func buf_fit(opaque_buf : void*, elem_size : usize, elem_stride: usize, num_added : usize) : void*
 {
-  hdr := buf_hdr_mutable(opaque_buf);
+  hdr := buf_hdr_mutable(opaque_buf, elem_stride);
   old_size := array_size(hdr);
-  hdr = array_alloc(hdr, num_added + array_length(hdr), elem_size);
+  hdr = array_alloc(hdr, num_added + array_length(hdr), elem_size, elem_stride);
   hdr.size = old_size;
-  return &hdr.bytes[0];
+  return array_data(hdr);
 }
 
-func buf_copy(opaque_buf : void const*, elem_size : usize) : void*
+func buf_copy(opaque_buf : void const*, elem_size : usize, elem_stride: usize) : void*
 {
-  n := buf_size(opaque_buf)/elem_size;
-  result := buf_fit(NULL, elem_size, n);
-  buf__add_n(result, (:uint8 const*)opaque_buf, elem_size, n);
+  n := buf_size(opaque_buf, elem_stride)/elem_size;
+  result := buf_fit(NULL, elem_size, elem_stride, n);
+  buf__add_n(result, (:uint8 const*)opaque_buf, elem_size, elem_stride, n);
   return result;
 }
 
-func buf_cat_range(opaque_buf_ptr : void*, elem_size : usize, first : void const*, last : void const*)
+func buf_cat_range(opaque_buf_ptr : void*, elem_size : usize, elem_stride: usize, first : void const*, last : void const*)
 {
   n := ((:uint8 const*)last - (:uint8 const*)first)/elem_size;
   buf_ptr := (:void**)opaque_buf_ptr;
-  *buf_ptr = buf_fit(*buf_ptr, elem_size, n);
-  buf__add_n(*buf_ptr, first, elem_size, n);
+  *buf_ptr = buf_fit(*buf_ptr, elem_size, elem_stride, n);
+  buf__add_n(*buf_ptr, first, elem_size, elem_stride, n);
 }
 
-func buf_cat_n(opaque_buf_ptr : void*, elem_size : usize, first : void const*, num_added : usize)
+func buf_cat_n(opaque_buf_ptr : void*, elem_size : usize, elem_stride: usize, first : void const*, num_added : usize)
 {
-  buf_cat_range(opaque_buf_ptr, elem_size, first, ((:uint8 const*)first) + elem_size*num_added);
+  buf_cat_range(opaque_buf_ptr, elem_size, elem_stride, first, ((:uint8 const*)first) + elem_size*num_added);
 }
 
-func buf__add_n(opaque_buf : void*, data : void const*, elem_size : usize, num_added : usize)
+func buf__add_n(opaque_buf: void*, data: void const*, elem_size : usize, elem_stride: usize, num_added : usize)
 {
-  hdr := buf_hdr_mutable(opaque_buf);
+  hdr := buf_hdr_mutable(opaque_buf, elem_stride);
   data_size := mul_with_overflow_check_usize(num_added, elem_size);
   available_size := hdr.capacity - hdr.size;
   #assert(data_size <= available_size);
-  memcpy(&hdr.bytes[hdr.size], data, data_size);
+  bytes := (:char*)array_data(hdr);
+  memcpy(&bytes[hdr.size], data, data_size);
   hdr.size += elem_size;
 }
 
 
-func buf_hdr(opaque_buf : void const*) : Array const*
+func buf_hdr(opaque_buf: void const*, elem_stride: usize) : ArrayHeader const*
 {
   if (!opaque_buf) { return NULL; }
-  addr := ((:uint8*) opaque_buf) - offsetof(Array, bytes);
-  hdr := (:Array const*) addr;
+  addr := ((:uint8*) opaque_buf) - array_data_offset(elem_stride);
+  hdr := (:ArrayHeader const*) addr;
   array__check_magic(hdr);
   return hdr;
 }
 
-func buf_hdr_mutable(opaque_buf : void*) : Array*
+func buf_hdr_mutable(opaque_buf: void*, elem_stride: usize) : ArrayHeader*
 {
-  return (:Array*)buf_hdr(opaque_buf);
+  return (:ArrayHeader*)buf_hdr(opaque_buf, elem_stride);
 }

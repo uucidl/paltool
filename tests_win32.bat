@@ -31,7 +31,9 @@ exit /b
 
 :build_test_module
 set Module=%1
+echo CHECK OSX
 ion -check -os osx %Module% || exit /b 1
+echo 
 set IONC="%ObjDir%\out_%Module%.c"
 ion -o "%IONC%" %Module% || exit /b 1
 set O="%OutputDir%\%Module%.exe"

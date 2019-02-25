@@ -1,6 +1,6 @@
 func str_match_suffix(str : char const*, suffix : char const*) : bool {
-     n := strlen(str);
-     mn := strlen(suffix);
+     n := libc.strlen(str);
+     mn := libc.strlen(suffix);
      while(n && mn && str[n - 1] == suffix[mn - 1]) {
 	  mn--;
 	  n--;
@@ -18,7 +18,7 @@ func expect_str(argi: int*, argc: int, argv: char**, dest_str : char**, desc : c
      if (*argi >= argc) {
          error := strbuf("expected %s", desc);
          die_at(*argi, argc, argv, error);
-         buf_free(error);
+         std.afree(error);
      }
      *dest_str = argv[*argi];
      *argi = *argi + 1;
@@ -38,13 +38,13 @@ func die_at(argi: int, argc:int, argv: char**, error: char*) {
      printf("ERROR: ");
      pre := "";
      for (i:=0; i<argi; i++) {
-          printf("%s%*s", pre, (:int)strlen(argv[i]), "");
+          printf("%s%*s", pre, (:int)libc.strlen(argv[i]), "");
           pre = " ";
      }
      if (argi < argc)
      {
           printf("%s", pre);
-          for (i:=0; i<strlen(argv[argi]); i++) {
+          for (i:=0; i<libc.strlen(argv[argi]); i++) {
                printf("^");
           }
           pre = " ";
@@ -55,10 +55,10 @@ func die_at(argi: int, argc:int, argv: char**, error: char*) {
      }
      pre = " ";
      for (i:=argi+1; i<argc; i++) {
-          printf("%s%*s", pre, (:int)strlen(argv[i]), "");
+          printf("%s%*s", pre, (:int)libc.strlen(argv[i]), "");
           pre = " ";
      }
      printf("\n");
      printf("USAGE: %s\n", USAGE);
-     exit(1);
+     libc.exit(1);
 }

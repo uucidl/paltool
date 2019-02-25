@@ -1,25 +1,35 @@
-import platform.filesystem {...}
-import libc {...}
+import fs = platform.filesystem
+import libc { printf }
 
-func main(argc : int, argv: char**) : int {
-  for (argi := 1; argi < argc; argi++) {
-    paths := find_all_files((:uint8*)argv[argi]);
-    if (paths.error != PathListError_None) {
-      printf("Error displaying %s: %d\n", argv[argi], paths.error);
-    } else {
-      printf("Displaying content of %s\n", paths.output.root);
-      while (paths.error == PathListError_None) {
-        list := paths.output;
-        for (i:=0; i<list.num_dirpaths; i++) {
-          printf("[d]\t\"%s\"\n", (:char const*)list.dirpaths[i]);
-        }
-        for (i:=0; i<list.num_filepaths; i++) {
-          printf("[f]\t\"%s\"\n", (:char const*)list.filepaths[i]);
-        }
-        next_paths(&paths);
-      }
-    }
-    free_generator(&paths);
+func main(argc: int, argv: char**): int {
+  if (argc == 1) {
+    list_dir(".");
+  }
+  for (i := 1; i < argc; i++) {
+    if (i > 1) { printf("\n"); } // separator
+    list_dir(argv[i]);
   }
   return 0;
+}
+
+func list_dir(dir: char*) {
+  g := fs.find_all_files(dir);
+  if (g.error) {
+    printf("Error displaying %s: %d\n", dir, g.error);
+  } else {
+    printf("Displaying content of %s\n", g.output.root);
+    for (; !g.error; fs.next_paths(&g)) {
+      list := g.output;
+      for (i := 0; i < list.num_dirpaths; i++) {
+        printf("[d]\t%s\n", list.dirpaths[i]);
+      }
+      for (i := 0; i < list.num_filepaths; i++) {
+        printf("[f]\t%s\n", list.filepaths[i]);
+      }
+    }
+    if (g.error != fs.Error_PastTheEnd) {
+      printf("Error while listing %s: %d\n", dir, g.error);
+    }
+  }
+  fs.free_generator(&g);
 }

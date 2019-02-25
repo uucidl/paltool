@@ -30,7 +30,9 @@ func platform_tasks_init()
   win32.AcquireSRWLockExclusive(&registry_lock);
   registry_init();
   num_cpus := _get_num_logical_cpus();
-  containers.buf_alloc_at(&native_threads.thread_states, sizeof(native_threads.thread_states[0]), num_cpus - 1);
+  if (std.alen(native_threads.thread_states) < num_cpus) {
+    std.afill(native_threads.thread_states, {}, num_cpus - std.alen(native_threads.thread_states));
+  }
   for (i:=0; i<num_cpus; i++) {
     #assert(i < 8*sizeof(native_threads.thread_states[i].bitmask));
     native_threads.thread_states[i].idx = i;
@@ -41,10 +43,10 @@ func platform_tasks_init()
       err := win32.GetLastError();
       #assert(err == 0);
     }
-    containers.buf_push(&native_threads.thread_handles, &handle, sizeof(handle));
+    std.apush(native_threads.thread_handles, handle);
   }
-  native_threads.num_threads = containers.buf_len(native_threads.thread_handles);
-  #assert(containers.buf_len(native_threads.thread_states) == native_threads.num_threads);
+  native_threads.num_threads = std.alen(native_threads.thread_handles);
+  #assert(std.alen(native_threads.thread_states) == native_threads.num_threads);
   if (native_threads.num_threads == 0) {
     // @todo @error_handling tell users we switched to synchronous execution
     #assert(false);
@@ -74,7 +76,7 @@ func platform_tasks_deinit()
       #assert(false);
     }
   }
-  buf_free(native_threads.thread_handles);
+  std.afree(native_threads.thread_handles);
   native_threads = {};
   registry_deinit();
   win32.ReleaseSRWLockExclusive(&registry_lock);
@@ -224,9 +226,9 @@ func task_core_worker(lpParameter: void*) : uint32
 
 func pick_thread_idx(content : TaskContent, num_threads: usize) : usize
 {
-  hash := hash_init();
-  hash = hash_mix_bytes(hash, (:uint8*)&content.data, sizeof(content.data));
-  hash = hash_mix_bytes(hash, (:uint8*)&content.fn, sizeof(content.fn));
+  hash := containers.hash_init();
+  hash = containers.hash_mix_bytes(hash, (:uint8*)&content.data, sizeof(content.data));
+  hash = containers.hash_mix_bytes(hash, (:uint8*)&content.fn, sizeof(content.fn));
   thread_idx := hash % native_threads.num_threads;
   #assert(thread_idx >= 0 && thread_idx < num_threads);
   return thread_idx;

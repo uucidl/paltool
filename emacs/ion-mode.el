@@ -1,4 +1,5 @@
 ;; ion-mode.el -- major mode for editing ion files
+;; NOT WORKING.
 
 ;; @url: http://cc-mode.sourceforge.net/derived-mode-ex.el
 ;; @url: http://www.wilfred.me.uk/blog/2015/03/19/adding-a-new-language-to-emacs/

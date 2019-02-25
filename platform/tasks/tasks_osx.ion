@@ -4,6 +4,7 @@ import datum {...}
 
 import libc
 import platform.bsd
+import std
 
 var submission_queue : dispatch.Queue;
 var main_queue : dispatch.Queue;
@@ -27,14 +28,13 @@ func platform_tasks_deinit() {
   #assert(submission_queue);
   dispatch.release({_dq=submission_queue});
   dispatch.release({_dq=main_queue});
-  for (i:=0; i<buf_len(groups.group_per_task); i++) {
+  for (i:=0; i<std.alen(groups.group_per_task); i++) {
     g := groups.group_per_task[i];
     if (g) {
       dispatch.release({_dg = g});
     }
   }
-  buf_free(groups.group_per_task);
-  groups.group_per_task = NULL;
+  std.afree(groups.group_per_task);
   submission_queue = NULL;
   main_queue = NULL;
   registry_deinit();
@@ -65,8 +65,13 @@ func _depends_on_submission_task(opaque_data: void*) {
   unstarted_depends_on(&unstarted_tasks, data.task, data.dependency);
 
   group: dispatch.Group*;
-  group = buf_alloc_at(&groups.group_per_task, sizeof(*group), unpack_idx_from_id(data.task));
-  groups.len = buf_len(groups.group_per_task);
+  task_idx := unpack_idx_from_id(data.task);
+  if (task_idx < std.alen(groups.group_per_task)) {
+    std.afit(groups.group_per_task, task_idx + 1);
+    std.asetlen(groups.group_per_task, task_idx + 1);
+  }
+  group = &groups.group_per_task[task_idx];
+  groups.len = std.alen(groups.group_per_task);
   if (!*group) {
     *group = dispatch.group_create();
     #assert(*group);

@@ -24,7 +24,7 @@ func normalize_or_zero_3x(n : usize, v : float*, v_stride : usize)
 {
   for (i:=0;i<n;i++) {
     sqnorm := v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
-    s := sqnorm <= 0.0? 0.0 : 1.0/sqrt(sqnorm);
+    s := sqnorm <= 0.0? 0.0 : 1.0/libc.sqrt(sqnorm);
     scale_3x(1, v, 3, s);
     v += v_stride;
   }

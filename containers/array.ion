@@ -1,28 +1,58 @@
+// 2019-03-02: Obsoleted.
+// These containers are obsolete now that the ion standard library (std)
+// includes much more convenient ones.
+
 import libc {
     memcmp,
     memcpy,
     memset,
 }
 
-struct Array
+// struct Array alignedas(T)
+// {
+//   header: ArrayHeader;
+//   data: T[];
+// }
+
+struct ArrayHeader
 {
-  magic     : int32;
-  capacity  : int32;
-  size      : int32;
-  elem_size : int32;
-  bytes     : uint8[1];
+  magic: int32;
+  capacity: int32;
+  size: int32;
+  memory: void*;
+  // for debugging
+  elem_size: int32;
+  alignment: int32;
 }
 
 const ArrayMagic = 0xcfce_6cd4;
 
-func array__free(array : Array*)
-{
-    if (!array) { return; }
-    *array = {};
-    libc_free(array);
+func align_up(addr: intptr, alignment: usize): intptr {
+    return (addr + alignment - 1) & ~(alignment - 1);
 }
 
-func array_reset(array : Array*) : Array*
+func ptr_align_up(ptr: void*, alignment: usize): void* {
+    return (:void*)align_up(intptr(ptr), alignment);
+}
+
+func array_header_alignment(elem_alignment: usize): usize {
+    return elem_alignment > alignof(ArrayHeader)
+        ? elem_alignment
+        : alignof(ArrayHeader);
+}
+
+func array_data_offset(elem_alignment: usize): usize {
+    return align_up(sizeof(ArrayHeader), array_header_alignment(elem_alignment));
+}
+
+func array__free(array : ArrayHeader*)
+{
+    if (!array) { return; }
+    array.magic = ~ArrayMagic;
+    libc_free(array.memory);
+}
+
+func array_reset(array : ArrayHeader*): ArrayHeader*
 {
     array__check_magic(array);
     array__free(array);
@@ -30,108 +60,104 @@ func array_reset(array : Array*) : Array*
 }
 
 // allocate enough space for num_elem * elem_size, preserving the existing bytes
-func array_alloc(array : Array*, num_elem : usize, elem_size : usize) : Array*
+func array_alloc(array : ArrayHeader*, num_elem: usize, elem_size: usize, elem_alignment: usize): ArrayHeader*
 {
     array__check_magic(array);
     needed_size := mul_with_overflow_check_usize(num_elem, elem_size);
     needed_capacity := needed_size;
+    new_byte_offset: usize;
+    num_new_bytes: usize;
+    alignment := array_header_alignment(elem_alignment);
     if (!array) {
-       array = libc.calloc(1, sizeof(Array) + needed_capacity);
+        memory := libc.malloc(array_data_offset(elem_alignment) + needed_capacity + alignment - 1);
+        array = ptr_align_up(memory, alignment);
         *array = {
-            capacity = needed_capacity,
             magic = ArrayMagic,
+            capacity = needed_capacity,
+            memory = memory,
             elem_size = elem_size,
-        }; 
-        memset(&array.bytes[0], 0, array.capacity);
+            alignment = alignment,
+        };
+
+        new_byte_offset = 0;
+        num_new_bytes = array.capacity;
     } else if (array.capacity < needed_capacity) {
         #assert(elem_size == array.elem_size);
+        #assert(alignment == array.alignment);
         old_capacity := array.capacity;
         next_capacity := 1 + old_capacity * 2;
-        new_capacity := needed_capacity>next_capacity? needed_capacity:next_capacity;
-        array.magic = 1; 
-        array = libc.realloc(array, sizeof(Array) + new_capacity);
-        memset(&array.bytes[old_capacity], 0, new_capacity - old_capacity);
-        array.capacity = new_capacity;
+        new_capacity := needed_capacity > next_capacity? needed_capacity:next_capacity;
+
+        old_array := array;
+        memory := libc.malloc(array_data_offset(elem_alignment) + new_capacity + alignment - 1);
+        array = ptr_align_up(memory, alignment);
+        *array = *old_array;
+        libc.memmove(array_data(array), array_data(old_array), old_capacity);
+
+        old_array.magic = ~ArrayMagic;
+        libc.free(old_array.memory);
+
         array.magic = ArrayMagic;
+        array.capacity = new_capacity;
+        array.memory = memory;
+
+        new_byte_offset = old_capacity;
+        num_new_bytes = new_capacity - old_capacity;
     }
     if (needed_size > array.size) {
         array.size = needed_size;
         #assert(array.size <= array.capacity);
     }
+    bytes := (:char*)array_data(array);
+    #assert(ptr_is_aligned(bytes, elem_alignment));
+    libc.memset(&bytes[new_byte_offset], 0, num_new_bytes);
     return array;
 }
 
-func array_capacity(array : Array const*) : usize
+func array_capacity(array : ArrayHeader const*) : usize
 {
     if (!array) { return 0; }
     array__check_magic(array);
     return array.capacity;
 }
 
-func array_size(array : Array const*) : usize
+func array_data(array: ArrayHeader*): void* {
+    if (!array) { return NULL; }
+    array__check_magic(array);
+    return ((:char*)array) + array_data_offset(array.alignment);
+}
+
+func array_size(array: ArrayHeader const*) : usize
 {
     if (!array) { return 0; }
     array__check_magic(array);
     return array.size;
 }
 
-func array_elem_size(array : Array const*) : usize
+func array_elem_size(array: ArrayHeader const*) : usize
 {
     if (!array) { return 0; }
     array__check_magic(array);
     return array.elem_size;
 }
 
-// element count according to the array element size
-func array_length(array : Array const*) : usize
+// element count
+func array_length(array : ArrayHeader const*) : usize
 {
     if (!array) { return 0; }
     array__check_magic(array);
     return array.size/array.elem_size;
 }
 
-func test_array()
-{
-    {
-        array : Array*;
-        #assert(array_length(array) == 0);
-        array = array_alloc(array, 0, 2);
-        #assert(array);
-        #assert(array_length(array) == 0);
-	array = array_reset(array);
-    }
-    {
-        array : Array*;
-        array = array_alloc(array, 8, 2);
-        #assert(array.size == 16);
-	for (i:=0; i<array.size; i++) {
-	  #assert(array.bytes[i] == 0);
-	}
-        #assert(array_length(array) == 8);
-        for (i:=0; i<array_length(array); i++) {
-            array.bytes[2*i] = 'a'+i;
-            array.bytes[2*i+1] = 'A'+i;
-        }
-        reference := "aAbBcCdDeEfFgGhH";
-        #assert(memcmp(&array.bytes[0], &reference[0], 16) == 0);
-        array = array_reset(array);
-        #assert(array_length(array) == 0);
-    }
-    {
-        array : Array*;
-        array = array_alloc(array, 11, 2);
-        array = array_alloc(array, 11+1, 2);
-        old_array := array;
-        array = array_alloc(array, 11+11-1, 2);
-        #assert(old_array == array);
-    }
-}
-
-func array__check_magic(array : Array const*)
+func array__check_magic(array : ArrayHeader const*)
 {
     #assert(!array || array.magic == ArrayMagic);
 }
 
+func ptr_is_aligned(ptr: void*, alignment: usize): bool {
+    x := intptr(ptr);
+    return x == ((x + alignment - 1) & ~(alignment - 1));
+}
 
 const USIZE_MUL_MAX = usize(1)<<(sizeof(usize)*8/2);
 
@@ -141,3 +167,75 @@ func mul_with_overflow_check_usize(a : usize, b : usize) : usize
     #assert(!would_overflow);
     return a * b;
 }
+
+// Testing
+
+@foreign("AlignmentTest")
+struct AlignmentTest
+{
+    b: char;
+}
+#foreign(preamble="""
+#if defined(_MSC_VER)
+#define ion_alignas(x) __declspec(align(x))
+#else /* C11 */
+#include <stdalign.h>
+#define ion_alignas(x) alignas(x)
+#endif""") // introduce macro to control alignment
+
+#foreign(preamble="typedef struct AlignmentTest { char ion_alignas(128) b;  } AlignmentTest;")
+
+func test_array()
+{
+    /* trivial allocation */ {
+        array : ArrayHeader*;
+        #assert(array_length(array) == 0);
+        array = array_alloc(array, 0, 2, 2);
+        #assert(array);
+        #assert(array_length(array) == 0);
+	    array = array_reset(array);
+    }
+    /* test elem_size = 2 */ {
+        array : ArrayHeader*;
+        array = array_alloc(array, 8, 2, 2);
+        #assert(array.size == 16);
+	    for (i:=0; i<array.size; i++) {
+            bytes := (:char*)array_data(array);
+	        #assert(bytes[i] == 0);
+	    }
+        #assert(array_length(array) == 8);
+        for (i:=0; i<array_length(array); i++) {
+            bytes := (:char*)array_data(array);
+            bytes[2*i] = 'a'+i;
+            bytes[2*i + 1] = 'A' + i;
+        }
+        reference := "aAbBcCdDeEfFgGhH";
+        #assert(memcmp(array_data(array), &reference[0], 16) == 0);
+        array = array_reset(array);
+        #assert(array_length(array) == 0);
+    }
+    /* test geometric growth */ {
+        array : ArrayHeader*;
+        array = array_alloc(array, 11, 2, 2);
+        array = array_alloc(array, 11+1, 2, 2);
+        old_array := array;
+        array = array_alloc(array, 11+11-1, 2, 2);
+        #assert(old_array == array);
+    }
+    /* test alignment support */ {
+        // TODO(nicolas): introduce support for type alignment in Array
+        array: ArrayHeader*;
+        array = array_alloc(array, 1, sizeof(:AlignmentTest), alignof(:AlignmentTest));
+        array = array_alloc(array, 2, sizeof(:AlignmentTest), alignof(:AlignmentTest));
+        libc.printf("array at: 0x%Ix memory: 0x%Ix\n", intptr(array), intptr(array.memory));
+        bytes := (:char*)array_data(array);
+        for (i := 0; i < array_length(array); i++) {
+            offset: usize = i*sizeof(:AlignmentTest);
+            libc.printf("%d 0x%Ix 0x%Ix\n", i, intptr(&bytes[offset]), alignof(:AlignmentTest));
+            #assert(0 == (intptr(&bytes[offset]) % alignof(:uint64)));
+            p := (:AlignmentTest*)(((:char*)array_data(array)) + offset);
+            p.b = 42;
+        }
+    }
+}
+
