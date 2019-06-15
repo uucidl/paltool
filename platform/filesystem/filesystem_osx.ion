@@ -31,7 +31,7 @@ func platform_find_all_files(root: char const*): PathListGenerator {
   #assert(fd_or_error >= 0);
   return {
     resources = new PlatformPathListGenerator { fd = fd_or_error, },
-    output = { root = std.sdup(root) },
+    output = { root = std.sdup(0, root) },
   };
 }
 

@@ -32,10 +32,10 @@ func platform_find_all_files(root: char const*): PathListGenerator {
 
   if (qres != win32.INVALID_HANDLE_VALUE) {
     result.error = Error_None;
-    result.output.root = std.sdup(root);
+    result.output.root = std.sdup(0, root);
     result.resources = new PlatformPathListGenerator {
       query = qres,
-      arena = std.arena_allocator(NULL),
+      arena = std.arena_allocator(NULL, 64*1024),
     };
     fill_path_list_from_win32_find_data(
       &result.output, one_file, &result.resources.arena);
@@ -51,7 +51,7 @@ func platform_next_paths(g: PathListGenerator*) {
     return;
   }
   std.arena_free(&g.resources.arena);
-  g.resources.arena = std.arena_allocator(NULL);
+  g.resources.arena = std.arena_allocator(NULL, 4*1024);
   g.output.root = g.resources.root;
   fill_path_list_from_win32_find_data(&g.output, one_file, &g.resources.arena);
 }
