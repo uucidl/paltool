@@ -1,304 +1,289 @@
 import libc
 
-func srgb_comp_from_rgb(c : float) : float
-{
+func srgb_comp_from_rgb(c: float): float {
     return c>0.0031308
-      ? (1.055)*libc.pow(c, 1.0/2.4) - 0.055
-      : 12.92*c;
+        ? (1.055)*libc.pow(c, 1.0/2.4) - 0.055
+        : 12.92*c;
 }
 
-func srgb_from_rgb(n : usize, srgb : float*, srgb_stride : usize, rgb : float const*, rgb_stride : usize) {
-  #assert(rgb_stride >= 3);
-  #assert(srgb_stride >= 3);
-  for (i:=0; i<n; i++) {
-    srgb[0] = srgb_comp_from_rgb(rgb[0]);
-    srgb[1] = srgb_comp_from_rgb(rgb[1]);
-    srgb[2] = srgb_comp_from_rgb(rgb[2]);
-    rgb += rgb_stride;
-    srgb += srgb_stride;
-  }
+func srgb_from_rgb(n: usize, srgb: float*, srgb_stride: usize, rgb: float const*, rgb_stride: usize) {
+    #assert(rgb_stride >= 3);
+    #assert(srgb_stride >= 3);
+    for (i:=0; i<n; i++) {
+        srgb[0] = srgb_comp_from_rgb(rgb[0]);
+        srgb[1] = srgb_comp_from_rgb(rgb[1]);
+        srgb[2] = srgb_comp_from_rgb(rgb[2]);
+        rgb += rgb_stride;
+        srgb += srgb_stride;
+    }
 }
 
-func rgb_comp_from_srgb(s : float) : float
-{
+func rgb_comp_from_srgb(s: float): float {
     return s>0.04045
-      ? libc.pow((s + 0.055)/(1.055), 2.4)
-      : s / 12.92;
+        ? libc.pow((s + 0.055)/(1.055), 2.4)
+        : s / 12.92;
 }
 
-func rgb_from_srgb(n : usize, rgb : float*, rgb_stride : usize, srgb : float const*, srgb_stride : usize) {
-  #assert(rgb_stride >= 3);
-  #assert(srgb_stride >= 3);
-  for (i:=0; i<n; i++) {
-    rgb[0] = rgb_comp_from_srgb(srgb[0]);
-    rgb[1] = rgb_comp_from_srgb(srgb[1]);
-    rgb[2] = rgb_comp_from_srgb(srgb[2]);
-    rgb += rgb_stride;
-    srgb += srgb_stride;
-  }
+func rgb_from_srgb(n: usize, rgb: float*, rgb_stride: usize, srgb: float const*, srgb_stride: usize) {
+    #assert(rgb_stride >= 3);
+    #assert(srgb_stride >= 3);
+    for (i:=0; i<n; i++) {
+        rgb[0] = rgb_comp_from_srgb(srgb[0]);
+        rgb[1] = rgb_comp_from_srgb(srgb[1]);
+        rgb[2] = rgb_comp_from_srgb(srgb[2]);
+        rgb += rgb_stride;
+        srgb += srgb_stride;
+    }
 }
 
-func rgb_from_xyz(n : usize, rgb : float*, rgb_stride : usize, xyz : float const*, xyz_stride : usize) {
-  // @url: http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
-  m : float[9] = {
-    3.2404542, -1.5371385, -0.4985314,
-   -0.9692660,  1.8760108,  0.0415560,
-    0.0556434, -0.2040259,  1.0572252,
-  };
-  for (i:=0; i<n; i++) {
-    rgb[0] = m[0]*xyz[0] + m[1]*xyz[1] + m[2]*xyz[2];
-    rgb[1] = m[3]*xyz[0] + m[4]*xyz[1] + m[5]*xyz[2];
-    rgb[2] = m[6]*xyz[0] + m[7]*xyz[1] + m[8]*xyz[2];
-    rgb += rgb_stride;
-    xyz += xyz_stride;
-  }
+func rgb_from_xyz(n: usize, rgb: float*, rgb_stride: usize, xyz: float const*, xyz_stride: usize) {
+    // @url: http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+    m: float[9] = {
+        3.2404542, -1.5371385, -0.4985314,
+        -0.9692660,  1.8760108,  0.0415560,
+        0.0556434, -0.2040259,  1.0572252,
+    };
+    for (i:=0; i<n; i++) {
+        rgb[0] = m[0]*xyz[0] + m[1]*xyz[1] + m[2]*xyz[2];
+        rgb[1] = m[3]*xyz[0] + m[4]*xyz[1] + m[5]*xyz[2];
+        rgb[2] = m[6]*xyz[0] + m[7]*xyz[1] + m[8]*xyz[2];
+        rgb += rgb_stride;
+        xyz += xyz_stride;
+    }
 }
 
-func xyz_from_rgb(n : usize, xyz : float*, xyz_stride : usize, rgb : float const*, rgb_stride : usize)
-{
- // @url: http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
- m : float[9] = {
-   0.4124564,  0.3575761,  0.1804375,
-   0.2126729,  0.7151522,  0.0721750,
-   0.0193339,  0.1191920,  0.9503041,
- };
- for (i:=0; i<n; i++) {
-    xyz[0] = m[0]*rgb[0] + m[1]*rgb[1] + m[2]*rgb[2];
-    xyz[1] = m[3]*rgb[0] + m[4]*rgb[1] + m[5]*rgb[2];
-    xyz[2] = m[6]*rgb[0] + m[7]*rgb[1] + m[8]*rgb[2];
-    xyz += xyz_stride;
-    rgb += rgb_stride;
- }  
+func xyz_from_rgb(n: usize, xyz: float*, xyz_stride: usize, rgb: float const*, rgb_stride: usize) {
+    // @url: http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+    m: float[9] = {
+        0.4124564,  0.3575761,  0.1804375,
+        0.2126729,  0.7151522,  0.0721750,
+        0.0193339,  0.1191920,  0.9503041,
+    };
+    for (i:=0; i<n; i++) {
+        xyz[0] = m[0]*rgb[0] + m[1]*rgb[1] + m[2]*rgb[2];
+        xyz[1] = m[3]*rgb[0] + m[4]*rgb[1] + m[5]*rgb[2];
+        xyz[2] = m[6]*rgb[0] + m[7]*rgb[1] + m[8]*rgb[2];
+        xyz += xyz_stride;
+        rgb += rgb_stride;
+    }
 }
 
 
-func srgb_from_xyz(n : usize, srgb : float*, srgb_stride : usize, xyz : float const*, xyz_stride : usize) {
-  #assert(xyz_stride >= 3);
-  #assert(srgb_stride >= 3);
-  for (i:=0; i<n; i++) {
-    rgb : float[3];
-    rgb_from_xyz(1, rgb, 3, xyz, 3);
-    srgb_from_rgb(1, srgb, 3, rgb, 3);
-    srgb += srgb_stride;
-    xyz += xyz_stride;
-  }
+func srgb_from_xyz(n: usize, srgb: float*, srgb_stride: usize, xyz: float const*, xyz_stride: usize) {
+    #assert(xyz_stride >= 3);
+    #assert(srgb_stride >= 3);
+    for (i:=0; i<n; i++) {
+        rgb: float[3];
+        rgb_from_xyz(1, rgb, 3, xyz, 3);
+        srgb_from_rgb(1, srgb, 3, rgb, 3);
+        srgb += srgb_stride;
+        xyz += xyz_stride;
+    }
 }
 
-func xyz_from_srgb(n : usize, xyz : float*, xyz_stride : usize, srgb : float const*, srgb_stride : usize)
-{
-  #assert(xyz_stride >= 3);
-  #assert(srgb_stride >= 3);
- for (i:=0; i<n; i++) {
-    rgb : float[3];
-    rgb_from_srgb(1, rgb, 3, srgb, 3);
-    xyz_from_rgb(1, xyz, 3, rgb, 3);
-    srgb += srgb_stride;
-    xyz += xyz_stride;
-  }
+func xyz_from_srgb(n: usize, xyz: float*, xyz_stride: usize, srgb: float const*, srgb_stride: usize) {
+    #assert(xyz_stride >= 3);
+    #assert(srgb_stride >= 3);
+    for (i:=0; i<n; i++) {
+        rgb: float[3];
+        rgb_from_srgb(1, rgb, 3, srgb, 3);
+        xyz_from_rgb(1, xyz, 3, rgb, 3);
+        srgb += srgb_stride;
+        xyz += xyz_stride;
+    }
 }
 
 // the IPT colorspace is designed to achieve perceptual constant hue
 // Development and Testing of a Color Space (IPT) with Improved Hue Uniformity
 // Fritz Ebner and Mark D. Fairchild 
 
-func ipt_from_xyz(n : usize, ipt : float*, ipt_stride : usize, xyz : float const*, xyz_stride : usize)
-{
-  lms_from_xyz : float[9] = {
-      0.4002, 0.7075, -0.0807,
-     -0.2280, 1.1500,  0.0612,
-      0.0,    0.0,     0.9184
-  };
-  ipt_from_slms : float[9] = {
-      0.4000,  0.4000,  0.2000,
-      4.4550, -4.8510,  0.3960,
-      0.8056,  0.3572, -1.1628,
-  };
-  for (i:=0; i<n; i++) {
-    lms : float[3];
-    lms[0] = lms_from_xyz[0]*xyz[0]+lms_from_xyz[1]*xyz[1]+lms_from_xyz[2]*xyz[2];
-    lms[1] = lms_from_xyz[3]*xyz[0]+lms_from_xyz[4]*xyz[1]+lms_from_xyz[5]*xyz[2];
-    lms[2] = lms_from_xyz[6]*xyz[0]+lms_from_xyz[7]*xyz[1]+lms_from_xyz[8]*xyz[2];
-    // slms <- lms
-    lms[0] = lms[0]<0.0? -libc.pow(-lms[0], 0.43) : libc.pow(lms[0], 0.43);
-    lms[1] = lms[1]<0.0? -libc.pow(-lms[1], 0.43) : libc.pow(lms[1], 0.43);
-    lms[2] = lms[2]<0.0? -libc.pow(-lms[2], 0.43) : libc.pow(lms[2], 0.43);
-    // 
-    ipt[0] = ipt_from_slms[0]*lms[0] + ipt_from_slms[1]*lms[1] + ipt_from_slms[2]*lms[2];
-    ipt[1] = ipt_from_slms[3]*lms[0] + ipt_from_slms[4]*lms[1] + ipt_from_slms[5]*lms[2];
-    ipt[2] = ipt_from_slms[6]*lms[0] + ipt_from_slms[7]*lms[1] + ipt_from_slms[8]*lms[2];
-    ipt += ipt_stride;
-    xyz += xyz_stride;
-  }
+func ipt_from_xyz(n: usize, ipt: float*, ipt_stride: usize, xyz: float const*, xyz_stride: usize) {
+    lms_from_xyz: float[9] = {
+        0.4002, 0.7075, -0.0807,
+       -0.2280, 1.1500,  0.0612,
+        0.0,    0.0,     0.9184
+    };
+    ipt_from_slms: float[9] = {
+        0.4000,  0.4000,  0.2000,
+        4.4550, -4.8510,  0.3960,
+        0.8056,  0.3572, -1.1628,
+    };
+    for (i:=0; i<n; i++) {
+        lms: float[3];
+        lms[0] = lms_from_xyz[0]*xyz[0]+lms_from_xyz[1]*xyz[1]+lms_from_xyz[2]*xyz[2];
+        lms[1] = lms_from_xyz[3]*xyz[0]+lms_from_xyz[4]*xyz[1]+lms_from_xyz[5]*xyz[2];
+        lms[2] = lms_from_xyz[6]*xyz[0]+lms_from_xyz[7]*xyz[1]+lms_from_xyz[8]*xyz[2];
+        // slms <- lms
+        lms[0] = lms[0]<0.0? -libc.pow(-lms[0], 0.43): libc.pow(lms[0], 0.43);
+        lms[1] = lms[1]<0.0? -libc.pow(-lms[1], 0.43): libc.pow(lms[1], 0.43);
+        lms[2] = lms[2]<0.0? -libc.pow(-lms[2], 0.43): libc.pow(lms[2], 0.43);
+        //
+        ipt[0] = ipt_from_slms[0]*lms[0] + ipt_from_slms[1]*lms[1] + ipt_from_slms[2]*lms[2];
+        ipt[1] = ipt_from_slms[3]*lms[0] + ipt_from_slms[4]*lms[1] + ipt_from_slms[5]*lms[2];
+        ipt[2] = ipt_from_slms[6]*lms[0] + ipt_from_slms[7]*lms[1] + ipt_from_slms[8]*lms[2];
+        ipt += ipt_stride;
+        xyz += xyz_stride;
+    }
 }
 
-func xyz_from_ipt(n : usize, xyz : float*, xyz_stride : usize, ipt : float const*, ipt_stride : usize)
-{
-  xyz_from_lms : float[9] = {
-    1.85024, -1.1383,    0.238435,
-    0.366831, 0.643885, -0.0106734,
-    0,        0,         1.08885,
-  };
-  slms_from_ipt : float[9] = {
-    1.,  0.0975689,  0.205226,
-    1., -0.113876,   0.133217,
-    1.,  0.0326151, -0.676887,
-  };
-  for (i:=0; i<n; i++) {
-    lms : float[3];
-    lms[0] = slms_from_ipt[0]*ipt[0] + slms_from_ipt[1]*ipt[1] + slms_from_ipt[2]*ipt[2];
-    lms[1] = slms_from_ipt[3]*ipt[0] + slms_from_ipt[4]*ipt[1] + slms_from_ipt[5]*ipt[2];
-    lms[2] = slms_from_ipt[6]*ipt[0] + slms_from_ipt[7]*ipt[1] + slms_from_ipt[8]*ipt[2];
-    // lms<-slms
-    lms[0] = lms[0]<0.0? -libc.pow(-lms[0], 1.0/0.43) : libc.pow(lms[0], 1.0/0.43);
-    lms[1] = lms[1]<0.0? -libc.pow(-lms[1], 1.0/0.43) : libc.pow(lms[1], 1.0/0.43);
-    lms[2] = lms[2]<0.0? -libc.pow(-lms[2], 1.0/0.43) : libc.pow(lms[2], 1.0/0.43);
-    // xyz <-
-    xyz[0] = xyz_from_lms[0]*lms[0] + xyz_from_lms[1]*lms[1] + xyz_from_lms[2]*lms[2];
-    xyz[1] = xyz_from_lms[3]*lms[0] + xyz_from_lms[4]*lms[1] + xyz_from_lms[5]*lms[2];
-    xyz[2] = xyz_from_lms[6]*lms[0] + xyz_from_lms[7]*lms[1] + xyz_from_lms[8]*lms[2];
-    xyz += xyz_stride;
-    ipt += ipt_stride;
-  }
+func xyz_from_ipt(n: usize, xyz: float*, xyz_stride: usize, ipt: float const*, ipt_stride: usize) {
+    xyz_from_lms: float[9] = {
+        1.85024, -1.1383,    0.238435,
+        0.366831, 0.643885, -0.0106734,
+        0,        0,         1.08885,
+    };
+    slms_from_ipt: float[9] = {
+        1.,  0.0975689,  0.205226,
+        1., -0.113876,   0.133217,
+        1.,  0.0326151, -0.676887,
+    };
+    for (i:=0; i<n; i++) {
+        lms: float[3];
+        lms[0] = slms_from_ipt[0]*ipt[0] + slms_from_ipt[1]*ipt[1] + slms_from_ipt[2]*ipt[2];
+        lms[1] = slms_from_ipt[3]*ipt[0] + slms_from_ipt[4]*ipt[1] + slms_from_ipt[5]*ipt[2];
+        lms[2] = slms_from_ipt[6]*ipt[0] + slms_from_ipt[7]*ipt[1] + slms_from_ipt[8]*ipt[2];
+        // lms<-slms
+        lms[0] = lms[0]<0.0? -libc.pow(-lms[0], 1.0/0.43): libc.pow(lms[0], 1.0/0.43);
+        lms[1] = lms[1]<0.0? -libc.pow(-lms[1], 1.0/0.43): libc.pow(lms[1], 1.0/0.43);
+        lms[2] = lms[2]<0.0? -libc.pow(-lms[2], 1.0/0.43): libc.pow(lms[2], 1.0/0.43);
+        // xyz <-
+        xyz[0] = xyz_from_lms[0]*lms[0] + xyz_from_lms[1]*lms[1] + xyz_from_lms[2]*lms[2];
+        xyz[1] = xyz_from_lms[3]*lms[0] + xyz_from_lms[4]*lms[1] + xyz_from_lms[5]*lms[2];
+        xyz[2] = xyz_from_lms[6]*lms[0] + xyz_from_lms[7]*lms[1] + xyz_from_lms[8]*lms[2];
+        xyz += xyz_stride;
+        ipt += ipt_stride;
+    }
 }
 
-func srgb_from_ipt(n : usize, srgb : float*, srgb_stride : usize, ipt: float const*, ipt_stride : usize)
-{
-  for (i:=0; i<n; i++) {
-    xyz : float[3];
+func srgb_from_ipt(n: usize, srgb: float*, srgb_stride: usize, ipt: float const*, ipt_stride: usize) {
+    for (i:=0; i<n; i++) {
+        xyz: float[3];
+        xyz_from_ipt(1, xyz, 3, ipt, 3);
+        srgb_from_xyz(1, srgb, 3, xyz, 3);
+        ipt += ipt_stride;
+        srgb += srgb_stride;
+    }
+}
+
+func test_colorspaces() {
+    // @todo check colorspace coverage, in particular extremas from ipt/xyz/srgb
+    black_srgb: float[3] = { 0, 0, 0};
+    white_srgb: float[3] = { 1, 1, 1 };
+    red_srgb: float[3] = { 1, 0, 0 };
+    green_srgb: float[3] = { 0, 1, 0 };
+    blue_srgb: float[3] = { 0, 0, 1 };
+
+    black_xyz: float[3];
+    white_xyz: float[3];
+    red_xyz: float[3];
+    green_xyz: float[3];
+    blue_xyz: float[3];
+    xyz_from_srgb(1, black_xyz, 3, black_srgb, 3);
+    xyz_from_srgb(1, white_xyz, 3, white_srgb, 3);
+    xyz_from_srgb(1, red_xyz, 3, red_srgb, 3);
+    xyz_from_srgb(1, green_xyz, 3, green_srgb, 3);
+    xyz_from_srgb(1, blue_xyz, 3, blue_srgb, 3);
+
+    printf("black: %f %f %f\n", black_xyz[0], black_xyz[1], black_xyz[2]);
+    printf("white: %f %f %f\n", white_xyz[0], white_xyz[1], white_xyz[2]);
+    printf("red: %f %f %f\n", red_xyz[0], red_xyz[1], red_xyz[2]);
+    printf("green: %f %f %f\n", green_xyz[0], green_xyz[1], green_xyz[2]);
+    printf("blue: %f %f %f\n", blue_xyz[0], blue_xyz[1], blue_xyz[2]);
+
+    d65_xyz: float[3] = { 0.9505, 1.0000, 1.0890 };
+    #assert(almost_equal_3x(white_xyz, d65_xyz, 1.0/1000.0));
+
+    test_colorspace_roundtrip_srgb_rgb({0, 0, 0});
+    test_colorspace_roundtrip_srgb_rgb({1, 0, 0});
+    test_colorspace_roundtrip_srgb_rgb({0, 1, 0});
+    test_colorspace_roundtrip_srgb_rgb({0, 0, 1});
+
+    test_colorspace_roundtrip_xyz_rgb({0, 0, 0});
+    test_colorspace_roundtrip_xyz_rgb({1, 0, 0});
+    test_colorspace_roundtrip_xyz_rgb({0, 1, 0});
+    test_colorspace_roundtrip_xyz_rgb({0, 0, 1});
+
+    test_colorspace_roundtrip_xyz_srgb({0, 0, 0});
+    test_colorspace_roundtrip_xyz_srgb({1, 0, 0});
+    test_colorspace_roundtrip_xyz_srgb({0, 1, 0});
+    test_colorspace_roundtrip_xyz_srgb({0, 0, 1});
+    test_colorspace_roundtrip_xyz_srgb({0.5, 0, 0});
+    test_colorspace_roundtrip_xyz_srgb({0, 0.5, 0});
+    test_colorspace_roundtrip_xyz_srgb({0, 0, 0.5});
+
+    test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, 0.0});
+    test_colorspace_roundtrip_xyz_ipt({1.0, 0.0, 0.0});
+    test_colorspace_roundtrip_xyz_ipt({0.0, -1.0, 0.0});
+    test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, -1.0});
+    test_colorspace_roundtrip_xyz_ipt({0.0, 1.0, 0.0});
+    test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, 1.0});
+
+    test_colorspace_roundtrip_srgb_ipt({0.0, 0.0, 0.0});
+    test_colorspace_roundtrip_srgb_ipt({1.0, 0.0, 0.0});
+    test_colorspace_roundtrip_srgb_ipt({0.0, -1.0, 0.0});
+    test_colorspace_roundtrip_srgb_ipt({0.0, 0.0, -1.0});
+    test_colorspace_roundtrip_srgb_ipt({0.0, 1.0, 0.0});
+    test_colorspace_roundtrip_srgb_ipt({0.0, 0.0, 1.0});
+}
+
+func almost_equal(a: float, b: float, tolerance: float): bool {
+    if (libc.fabs (a - b) < tolerance) {
+        return 1;
+    } else if (libc.fabs (b) > libc.fabs (a)) {
+        return libc.fabs ((a - b) / b) < tolerance;
+    } else {
+        return libc.fabs ((a - b) / a) < tolerance;
+    }
+}
+
+func almost_equal_3x(a: float const[3], b: float const[3], tolerance: float): bool {
+    return almost_equal(a[0], b[0], tolerance) && almost_equal(a[1], b[1], tolerance) && almost_equal(a[2], b[2], tolerance);
+}
+
+func test_colorspace_roundtrip_srgb_rgb(rgb: float const[3]) {
+    srgb: float[3];
+    rrgb: float[3];
+
+    srgb_from_rgb(1, srgb, 3, rgb, 3);
+    rgb_from_srgb(1, rrgb, 3, srgb, 3);
+    #assert(almost_equal_3x(rrgb, rgb, 1.0/255.0));
+}
+
+func test_colorspace_roundtrip_xyz_rgb(rgb: float const[3]) {
+    xyz: float[3];
+    rrgb: float[3];
+
+    xyz_from_rgb(1, xyz, 3, rgb, 3);
+    rgb_from_xyz(1, rrgb, 3, xyz, 3);
+    #assert(almost_equal_3x(rrgb, rgb, libc.pow(1.0/255.0, 2.2)));
+}
+
+func test_colorspace_roundtrip_xyz_srgb(rgb: float const[3]) {
+    xyz: float[3];
+    rrgb: float[3];
+
+    xyz_from_srgb(1, xyz, 3, rgb, 3);
+    srgb_from_xyz(1, rrgb, 3, xyz, 3);
+    #assert(almost_equal_3x(rrgb, rgb, 1.0/255.0));
+}
+
+func test_colorspace_roundtrip_xyz_ipt(ipt: float const[3]) {
+    xyz: float[3];
+    ript: float[3];
+
     xyz_from_ipt(1, xyz, 3, ipt, 3);
-    srgb_from_xyz(1, srgb, 3, xyz, 3);
-    ipt += ipt_stride;
-    srgb += srgb_stride;
-  }
+    ipt_from_xyz(1, ript, 3, xyz, 3);
+    #assert(almost_equal_3x(ript, ipt, 1.0/255.0));
 }
 
-func test_colorspaces()
-{
-  // @todo check colorspace coverage, in particular extremas from ipt/xyz/srgb
-  black_srgb : float[3] = { 0, 0, 0};
-  white_srgb : float[3] = { 1, 1, 1 };
-  red_srgb : float[3] = { 1, 0, 0 };
-  green_srgb : float[3] = { 0, 1, 0 };
-  blue_srgb : float[3] = { 0, 0, 1 };
+func test_colorspace_roundtrip_srgb_ipt(srgb: float const[3]) {
+    xyz: float[3];
+    ipt: float[3];
+    rrgb: float[3];
 
-  black_xyz : float[3];
-  white_xyz : float[3];
-  red_xyz : float[3];
-  green_xyz : float[3];
-  blue_xyz : float[3];
-  xyz_from_srgb(1, black_xyz, 3, black_srgb, 3);
-  xyz_from_srgb(1, white_xyz, 3, white_srgb, 3);
-  xyz_from_srgb(1, red_xyz, 3, red_srgb, 3);
-  xyz_from_srgb(1, green_xyz, 3, green_srgb, 3);
-  xyz_from_srgb(1, blue_xyz, 3, blue_srgb, 3);
-
-  printf("black: %f %f %f\n", black_xyz[0], black_xyz[1], black_xyz[2]);
-  printf("white: %f %f %f\n", white_xyz[0], white_xyz[1], white_xyz[2]);
-  printf("red: %f %f %f\n", red_xyz[0], red_xyz[1], red_xyz[2]);
-  printf("green: %f %f %f\n", green_xyz[0], green_xyz[1], green_xyz[2]);
-  printf("blue: %f %f %f\n", blue_xyz[0], blue_xyz[1], blue_xyz[2]);
-
-  d65_xyz : float[3] = { 0.9505, 1.0000, 1.0890 };
-  #assert(almost_equal_3x(white_xyz, d65_xyz, 1.0/1000.0));
-
-  test_colorspace_roundtrip_srgb_rgb({0, 0, 0});
-  test_colorspace_roundtrip_srgb_rgb({1, 0, 0});
-  test_colorspace_roundtrip_srgb_rgb({0, 1, 0});
-  test_colorspace_roundtrip_srgb_rgb({0, 0, 1});
-
-  test_colorspace_roundtrip_xyz_rgb({0, 0, 0});
-  test_colorspace_roundtrip_xyz_rgb({1, 0, 0});
-  test_colorspace_roundtrip_xyz_rgb({0, 1, 0});
-  test_colorspace_roundtrip_xyz_rgb({0, 0, 1});
-  
-  test_colorspace_roundtrip_xyz_srgb({0, 0, 0});
-  test_colorspace_roundtrip_xyz_srgb({1, 0, 0});
-  test_colorspace_roundtrip_xyz_srgb({0, 1, 0});
-  test_colorspace_roundtrip_xyz_srgb({0, 0, 1});
-  test_colorspace_roundtrip_xyz_srgb({0.5, 0, 0});
-  test_colorspace_roundtrip_xyz_srgb({0, 0.5, 0});
-  test_colorspace_roundtrip_xyz_srgb({0, 0, 0.5});
-
-  test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, 0.0});
-  test_colorspace_roundtrip_xyz_ipt({1.0, 0.0, 0.0});
-  test_colorspace_roundtrip_xyz_ipt({0.0, -1.0, 0.0});
-  test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, -1.0});
-  test_colorspace_roundtrip_xyz_ipt({0.0, 1.0, 0.0});
-  test_colorspace_roundtrip_xyz_ipt({0.0, 0.0, 1.0});
-
-  test_colorspace_roundtrip_srgb_ipt({0.0, 0.0, 0.0});
-  test_colorspace_roundtrip_srgb_ipt({1.0, 0.0, 0.0});
-  test_colorspace_roundtrip_srgb_ipt({0.0, -1.0, 0.0});
-  test_colorspace_roundtrip_srgb_ipt({0.0, 0.0, -1.0});
-  test_colorspace_roundtrip_srgb_ipt({0.0, 1.0, 0.0});
-  test_colorspace_roundtrip_srgb_ipt({0.0, 0.0, 1.0});
-}
-
-func almost_equal(a : float, b : float, tolerance : float) : bool
-{
-  if (libc.fabs (a - b) < tolerance) {
-    return 1;
-  } else if (libc.fabs (b) > libc.fabs (a)) {
-    return libc.fabs ((a - b) / b) < tolerance;
-  } else {
-    return libc.fabs ((a - b) / a) < tolerance;
-  }
-}
-
-func almost_equal_3x(a : float const[3], b : float const[3], tolerance : float) : bool
-{
-  return almost_equal(a[0], b[0], tolerance) && almost_equal(a[1], b[1], tolerance) && almost_equal(a[2], b[2], tolerance);
-}
-
-func test_colorspace_roundtrip_srgb_rgb(rgb : float const[3])
-{
-  srgb : float[3];
-  rrgb : float[3];
-
-  srgb_from_rgb(1, srgb, 3, rgb, 3);
-  rgb_from_srgb(1, rrgb, 3, srgb, 3);
-  #assert(almost_equal_3x(rrgb, rgb, 1.0/255.0));
-}
-
-func test_colorspace_roundtrip_xyz_rgb(rgb : float const[3])
-{
-  xyz : float[3];
-  rrgb : float[3];
-
-  xyz_from_rgb(1, xyz, 3, rgb, 3);
-  rgb_from_xyz(1, rrgb, 3, xyz, 3);
-  #assert(almost_equal_3x(rrgb, rgb, libc.pow(1.0/255.0, 2.2)));
-}
-
-func test_colorspace_roundtrip_xyz_srgb(rgb : float const[3])
-{
-  xyz : float[3];
-  rrgb : float[3];
-
-  xyz_from_srgb(1, xyz, 3, rgb, 3);
-  srgb_from_xyz(1, rrgb, 3, xyz, 3);
-  #assert(almost_equal_3x(rrgb, rgb, 1.0/255.0));
-}
-
-func test_colorspace_roundtrip_xyz_ipt(ipt : float const[3])
-{
-  xyz : float[3];
-  ript : float[3];
-
-  xyz_from_ipt(1, xyz, 3, ipt, 3);
-  ipt_from_xyz(1, ript, 3, xyz, 3);
-  #assert(almost_equal_3x(ript, ipt, 1.0/255.0));
-}
-
-func test_colorspace_roundtrip_srgb_ipt(srgb : float const[3])
-{
-  xyz : float[3];
-  ipt : float[3];
-  rrgb : float[3];
-
-  xyz_from_srgb(1, xyz, 3, srgb, 3);
-  ipt_from_xyz(1, ipt, 3, xyz, 3);
-  xyz_from_ipt(1, xyz, 3, ipt, 3);
-  srgb_from_xyz(1, rrgb, 3, xyz, 3);
-  #assert(almost_equal_3x(rrgb, srgb, 1.0/255.0));
+    xyz_from_srgb(1, xyz, 3, srgb, 3);
+    ipt_from_xyz(1, ipt, 3, xyz, 3);
+    xyz_from_ipt(1, xyz, 3, ipt, 3);
+    srgb_from_xyz(1, rrgb, 3, xyz, 3);
+    #assert(almost_equal_3x(rrgb, srgb, 1.0/255.0));
 }

@@ -8,132 +8,132 @@ import platform.tasks { ... }
 import std
 
 enum Mode {
-  Mode_A,
-  Mode_B,
+    Mode_A,
+    Mode_B,
 }
 
 struct MainArgs {
-  root_dir: char*;
-  mode: Mode;
+    root_dir: char*;
+    mode: Mode;
 }
 
-func parse_args(argc : int, argv: char**): MainArgs {
-  result : MainArgs;
-  argi := 1;
-  mode : char*;
-  expect_str(&argi, argc, argv, &mode, "mode string");
-  if (0 == libc.strcmp("a", mode)) {
-    result.mode = Mode_A;
-  } else if (0 == libc.strcmp("b", mode)) {
-    result.mode = Mode_B;
-  } else {
-    die_at(argi - 1, argc, argv, "Expected a|b");
-  }
-  expect_str(&argi, argc, argv, &result.root_dir, "root dir");
-  return result;
+func parse_args(argc: int, argv: char**): MainArgs {
+    result: MainArgs;
+    argi := 1;
+    mode: char*;
+    expect_str(&argi, argc, argv, &mode, "mode string");
+    if (0 == libc.strcmp("a", mode)) {
+        result.mode = Mode_A;
+    } else if (0 == libc.strcmp("b", mode)) {
+        result.mode = Mode_B;
+    } else {
+        die_at(argi - 1, argc, argv, "Expected a|b");
+    }
+    expect_str(&argi, argc, argv, &result.root_dir, "root dir");
+    return result;
 }
 
 func main(argc: int, argv: char**): int {
-  test_colorspaces();
-  test_ipt96_from_rgb24_transform();
-  test_pack_pt();
+    test_colorspaces();
+    test_ipt96_from_rgb24_transform();
+    test_pack_pt();
 
-  args := parse_args(argc, argv);
-  tasks_init();
+    args := parse_args(argc, argv);
+    tasks_init();
 
-  printf("INFO: processing image files in root: %s\n", args.root_dir);
+    printf("INFO: processing image files in root: %s\n", args.root_dir);
 
-  end_task := create_task(end_task_task, NULL);
-  image_tasks := start_image_tasks_for_dir(args.root_dir, end_task);
-  if (!image_tasks) { return 1; }
-  run_task_and_wait(end_task);
+    end_task := create_task(end_task_task, NULL);
+    image_tasks := start_image_tasks_for_dir(args.root_dir, end_task);
+    if (!image_tasks) { return 1; }
+    run_task_and_wait(end_task);
 
-  // @todo: merge results, count occurrences per area
-  hue_counts: HueCounts;
-  foo_counts: FooHueCount*;
-  foo_num_bits: int;
-  {
-    index: HueIndex;
-    foo_index: HueIndex;
-    for (image_idx:=0; image_idx < std.alen(image_tasks); image_idx++) {
-      task := image_tasks[image_idx].task_data;
-      merge_hue_counts(&index, &hue_counts, &task.count_hue.result);
-      foo_num_bits = task.foo.num_bits;
-      foo_merge_hue_counts(&foo_index, &foo_counts, &task.foo.hue_counts[0], std.alen(task.foo.hue_counts));
+    // @todo: merge results, count occurrences per area
+    hue_counts: HueCounts;
+    foo_counts: FooHueCount*;
+    foo_num_bits: int;
+    {
+        index: HueIndex;
+        foo_index: HueIndex;
+        for (image_idx:=0; image_idx < std.alen(image_tasks); image_idx++) {
+            task := image_tasks[image_idx].task_data;
+            merge_hue_counts(&index, &hue_counts, &task.count_hue.result);
+            foo_num_bits = task.foo.num_bits;
+            foo_merge_hue_counts(&foo_index, &foo_counts, &task.foo.hue_counts[0], std.alen(task.foo.hue_counts));
+        }
+        std.afree(index.index);
+        std.afree(foo_index.index);
     }
-    std.afree(index.index);
-    std.afree(foo_index.index);
-  }
-  for (i := 0; i < std.alen(image_tasks); i++) { image_task_free(&image_tasks[i]); }
-  std.afree(image_tasks);
+    for (i := 0; i < std.alen(image_tasks); i++) { image_task_free(&image_tasks[i]); }
+    std.afree(image_tasks);
 
-  // Report:
-  if (args.mode == Mode_A) {
-    num_hues := std.alen(hue_counts.hues);
-    printf("num_hues: %zu\n", num_hues);
-    for (hue_i:=0; hue_i < num_hues; hue_i++) {
-      hue := hue_counts.hues[hue_i];
-      if (hue.num == 1) { continue; }
-      srgb : float[3];
-      srgb_from_ipt(1, srgb, 3, hue.ipt, 3);
-      printf("%zu\t%f\t#%02x %02x %02x\tA\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+    // Report:
+    if (args.mode == Mode_A) {
+        num_hues := std.alen(hue_counts.hues);
+        printf("num_hues: %zu\n", num_hues);
+        for (hue_i:=0; hue_i < num_hues; hue_i++) {
+            hue := hue_counts.hues[hue_i];
+            if (hue.num == 1) { continue; }
+            srgb: float[3];
+            srgb_from_ipt(1, srgb, 3, hue.ipt, 3);
+            printf("%zu\t%f\t#%02x %02x %02x\tA\n", hue.num, hue.hue_angle, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+        }
     }
-  }
-  if (args.mode == Mode_B) {
-    ipt_grey_threshold := 2.0*0.05*0.05;
-    for (i:=0; i<std.alen(foo_counts); i++) {
-      counts: FooHueCount const* = &foo_counts[i];
-      if (counts.n == 1) { continue; }
-      hue := unpack_pt(counts.packed_hue, foo_num_bits);
-      if (ipt_grey_threshold >= hue.p*hue.p + hue.t*hue.t) { continue; }
-      srgb : float[3];
-      ipt : float[3] = { counts.i_max, hue.p, hue.t };
-      srgb_from_ipt(1, srgb, 3, ipt, 3);
-      printf("%zu\t%f %f\t#%02x %02x %02x\tB\n", counts.n, hue.p, hue.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+    if (args.mode == Mode_B) {
+        ipt_grey_threshold := 2.0*0.05*0.05;
+        for (i:=0; i<std.alen(foo_counts); i++) {
+            counts: FooHueCount const* = &foo_counts[i];
+            if (counts.n == 1) { continue; }
+            hue := unpack_pt(counts.packed_hue, foo_num_bits);
+            if (ipt_grey_threshold >= hue.p*hue.p + hue.t*hue.t) { continue; }
+            srgb: float[3];
+            ipt: float[3] = { counts.i_max, hue.p, hue.t };
+            srgb_from_ipt(1, srgb, 3, ipt, 3);
+            printf("%zu\t%f %f\t#%02x %02x %02x\tB\n", counts.n, hue.p, hue.t, int(0xff*srgb[0]), int(0xff*srgb[1]), int(0xff*srgb[2]));
+        }
     }
-  }
 
-  tasks_deinit();
-  return 0;
+    tasks_deinit();
+    return 0;
 }
 
 func start_image_tasks_for_dir(dir: char*, end_task_id: Task): ImageTask* {
-  tasks: ImageTask[];
-  g := fs.find_all_files(dir);
-  for (; !g.error; fs.next_paths(&g)) {
-    for (i := 0; i < g.output.num_filepaths; i++) {
-      name := g.output.filepaths[i];
-      if (!str_match_suffix(name, ".jpg") && !str_match_suffix(name, ".JPG")) {
-        continue;
-      }
+    tasks: ImageTask[];
+    g := fs.find_all_files(dir);
+    for (; !g.error; fs.next_paths(&g)) {
+        for (i := 0; i < g.output.num_filepaths; i++) {
+            name := g.output.filepaths[i];
+            if (!str_match_suffix(name, ".jpg") && !str_match_suffix(name, ".JPG")) {
+                continue;
+            }
 
-      task: ImageTask;
-      abspath: char* = strbuf("%s/%s", dir, name);
-      image_task_from_file(&task, abspath);
+            task: ImageTask;
+            abspath: char* = strbuf("%s/%s", dir, name);
+            image_task_from_file(&task, abspath);
 
-      libc.printf("[f]\t%s", name);
-      if (task.image.interleaved_channels) {
-        libc.printf("\t[image/jpeg]");
-        std.apush(tasks, task);
-      } else {
-        libc.printf("\t[corrupt]");
-      }
-      libc.printf("\n");
-      task_depends_on(end_task_id, task.task);
-      start_task(task.task);
-      std.afree(abspath);
+            libc.printf("[f]\t%s", name);
+            if (task.image.interleaved_channels) {
+                libc.printf("\t[image/jpeg]");
+                std.apush(tasks, task);
+            } else {
+                libc.printf("\t[corrupt]");
+            }
+            libc.printf("\n");
+            task_depends_on(end_task_id, task.task);
+            start_task(task.task);
+            std.afree(abspath);
+        }
     }
-  }
-  if (g.error != fs.Error_PastTheEnd) {
-    if (g.error == fs.Error_InvalidRoot) {
-      printf("ERROR: Not a valid directory: %s\n", dir);
+    if (g.error != fs.Error_PastTheEnd) {
+        if (g.error == fs.Error_InvalidRoot) {
+            printf("ERROR: Not a valid directory: %s\n", dir);
+        }
+        printf("ERROR: path listing error: %d\n", g.error);
+        std.afree(tasks);
+        #assert(tasks == NULL);
     }
-    printf("ERROR: path listing error: %d\n", g.error);
-    std.afree(tasks);
-    #assert(tasks == NULL);
-  }
-  fs.free_generator(&g);
-  return tasks;
+    fs.free_generator(&g);
+    return tasks;
 }
 
 // @todo separate transform into:
@@ -146,380 +146,355 @@ func start_image_tasks_for_dir(dir: char*, end_task_id: Task): ImageTask* {
 
 struct RGB24
 {
-  r, g, b: uint8;
+    r, g, b: uint8;
 }
 
 struct IPT96
 {
-  i, p, t : float;
+    i, p, t: float;
 }
 
-func ipt96_isequal(a : IPT96, b: IPT96) : bool {
-  return a.i == b.i && a.p == b.p && a.t == b.t;
+func ipt96_isequal(a: IPT96, b: IPT96): bool {
+    return a.i == b.i && a.p == b.p && a.t == b.t;
 }
 
 struct IPT96FromRGB24Transform
 {
-  num_pixels: usize;
-  inputRGB24: RGB24*;
-  outputIPT96: IPT96*;
+    num_pixels: usize;
+    inputRGB24: RGB24*;
+    outputIPT96: IPT96*;
 }
 
-func allocate_ipt96_from_rgb24(num_pixels: usize, input: RGB24*) : IPT96FromRGB24Transform {
-  return {
-    num_pixels = num_pixels,
-    inputRGB24 = input,
-    outputIPT96 = libc.calloc(num_pixels, sizeof(IPT96)),
-  };
+func allocate_ipt96_from_rgb24(num_pixels: usize, input: RGB24*): IPT96FromRGB24Transform {
+    return {
+        num_pixels = num_pixels,
+        inputRGB24 = input,
+        outputIPT96 = libc.calloc(num_pixels, sizeof(IPT96)),
+    };
 }
 
-func free_ipt96_from_rgb24(transform : IPT96FromRGB24Transform*) {
-  libc.free(transform.outputIPT96);
-  transform.outputIPT96 = NULL;
+func free_ipt96_from_rgb24(transform: IPT96FromRGB24Transform*) {
+    libc.free(transform.outputIPT96);
+    transform.outputIPT96 = NULL;
 }
 
 struct CountHueTransform
 {
-  num_pixels : usize;
-  inputIPT96 : IPT96*;
-  result : HueCounts;
+    num_pixels: usize;
+    inputIPT96: IPT96*;
+    result: HueCounts;
 }
 
 struct HueWithOccurence
 {
-  hue_angle : float;
-  num : usize;
-  ipt : float[3];
+    hue_angle: float;
+    num: usize;
+    ipt: float[3];
 }
 
 struct HueCounts
 {
-  num_pixels : usize;
-  hues : HueWithOccurence*;
+    num_pixels: usize;
+    hues: HueWithOccurence*;
 }
 
-func bits_float(x : float) : uint32
-{
-  y : uint32;
-  #static_assert(sizeof(float) == sizeof(uint32));
-  libc.memcpy(&y, &x, sizeof(y));
-  return y;
+func bits_float(x: float): uint32 {
+    y: uint32;
+    #static_assert(sizeof(float) == sizeof(uint32));
+    libc.memcpy(&y, &x, sizeof(y));
+    return y;
 }
 
-func count_hue_hue_key(hue_angle : float) : uint64
-{
-  return 0xf | (bits_float(hue_angle)<<4);
+func count_hue_hue_key(hue_angle: float): uint64 {
+    return 0xf | (bits_float(hue_angle)<<4);
 }
 
-struct HueIndex
-{
-  index: {uint64,intptr}[];
+struct HueIndex {
+    index: {uint64,intptr}[];
 }
 
 func record_raw_hue(hue_index: HueIndex*, count: HueCounts*, hue_elem: HueWithOccurence) {
-  hue_key := count_hue_hue_key(hue_elem.hue_angle);
-  hue_idx_plus_one := std.aget(hue_index.index, hue_key);
-  if (hue_idx_plus_one == 0) {
-    hue_idx_plus_one = std.alen(count.hues) + 1;
-    std.apush(count.hues, hue_elem);
-    std.aput(hue_index.index, hue_key, hue_idx_plus_one);
-  } else {
-    d_hue := &count.hues[hue_idx_plus_one - 1];
-    d_hue.num += hue_elem.num;
-    if (hue_elem.ipt[0] > d_hue.ipt[0]) {
-      d_hue.ipt[0] = hue_elem.ipt[0];
-      d_hue.ipt[1] = hue_elem.ipt[1];
-      d_hue.ipt[2] = hue_elem.ipt[2];
+    hue_key := count_hue_hue_key(hue_elem.hue_angle);
+    hue_idx_plus_one := std.aget(hue_index.index, hue_key);
+    if (hue_idx_plus_one == 0) {
+        hue_idx_plus_one = std.alen(count.hues) + 1;
+        std.apush(count.hues, hue_elem);
+        std.aput(hue_index.index, hue_key, hue_idx_plus_one);
+    } else {
+        d_hue := &count.hues[hue_idx_plus_one - 1];
+        d_hue.num += hue_elem.num;
+        if (hue_elem.ipt[0] > d_hue.ipt[0]) {
+            d_hue.ipt[0] = hue_elem.ipt[0];
+            d_hue.ipt[1] = hue_elem.ipt[1];
+            d_hue.ipt[2] = hue_elem.ipt[2];
+        }
     }
-  }
 }
 
-func merge_hue_counts(hue_index: HueIndex*, dest: HueCounts*, src: HueCounts const*)
-{
-  num_hues := std.alen(src.hues);
-  for (hue_i:=0; hue_i < num_hues; hue_i++) {
-    hue := src.hues[hue_i];
-    record_raw_hue(hue_index, dest, hue);
-    dest.num_pixels += src.num_pixels;
-  }
+func merge_hue_counts(hue_index: HueIndex*, dest: HueCounts*, src: HueCounts const*) {
+    num_hues := std.alen(src.hues);
+    for (hue_i:=0; hue_i < num_hues; hue_i++) {
+        hue := src.hues[hue_i];
+        record_raw_hue(hue_index, dest, hue);
+        dest.num_pixels += src.num_pixels;
+    }
 }
 
-func pack_su_float(f : float, num_bits : int) : uint32
-{
-  #assert(num_bits > 0 && num_bits < 31);
-  one_as_int := 1<<(num_bits-1);
-  positive_max := one_as_int - 1;
-  one := float(positive_max);
-  s := int32(f*one);
-  shift := 32-num_bits;
-  s = s<0? -((-s) << shift) : s << shift;
-  u := uint32(s);
-  return u >> shift;
+func pack_su_float(f: float, num_bits: int): uint32 {
+    #assert(num_bits > 0 && num_bits < 31);
+    one_as_int := 1<<(num_bits-1);
+    positive_max := one_as_int - 1;
+    one := float(positive_max);
+    s := int32(f*one);
+    shift := 32-num_bits;
+    s = s<0? -((-s) << shift): s << shift;
+    u := uint32(s);
+    return u >> shift;
 }
 
-func unpack_su_float(packed : uint32, num_bits : int) : float
-{
-  one_as_int := 1<<(num_bits - 1);
-  positive_max := one_as_int - 1;
-  one := float(positive_max);
-  as_int : int32 = sign_extend(bits(packed, 0, num_bits), num_bits);
-  return as_int/one;
+func unpack_su_float(packed: uint32, num_bits: int): float {
+    one_as_int := 1<<(num_bits - 1);
+    positive_max := one_as_int - 1;
+    one := float(positive_max);
+    as_int: int32 = sign_extend(bits(packed, 0, num_bits), num_bits);
+    return as_int/one;
 }
 
-func pack_pt(ipt : IPT96, num_bits : int) : uint32
-{
-  return (pack_su_float(ipt.p, num_bits)<<num_bits) | pack_su_float(ipt.t, num_bits);
+func pack_pt(ipt: IPT96, num_bits: int): uint32 {
+    return (pack_su_float(ipt.p, num_bits)<<num_bits) | pack_su_float(ipt.t, num_bits);
 }
 
-func unpack_pt(packed : uint32, num_bits : int) : IPT96
-{
-  one_as_int := 1<<(num_bits - 1);
-  positive_max := one_as_int - 1;
-  one := float(positive_max);
-  p_as_int : int32 = sign_extend(bits(packed, num_bits, num_bits), num_bits);
-  t_as_int : int32 = sign_extend(bits(packed, 0, num_bits), num_bits);
-  return { p=p_as_int/one, t=t_as_int/one };
+func unpack_pt(packed: uint32, num_bits: int): IPT96 {
+    one_as_int := 1<<(num_bits - 1);
+    positive_max := one_as_int - 1;
+    one := float(positive_max);
+    p_as_int: int32 = sign_extend(bits(packed, num_bits, num_bits), num_bits);
+    t_as_int: int32 = sign_extend(bits(packed, 0, num_bits), num_bits);
+    return { p=p_as_int/one, t=t_as_int/one };
 }
 
-func test_pack_pt()
-{
-  bit_sizes : int[] = { 8, 9, 10 };
-  num_bit_sizes := sizeof(bit_sizes)/sizeof(bit_sizes[0]); // @todo I wish I had countof
-  for (i:=0; i<num_bit_sizes; i++) {
-    num_bits := bit_sizes[i];
-    y := pack_pt({t=1.0}, num_bits);
-    pt := unpack_pt(y, num_bits);
-    #assert(ipt96_isequal(pt, {t = 1.0}));
+func test_pack_pt() {
+    bit_sizes: int[] = { 8, 9, 10 };
+    num_bit_sizes := sizeof(bit_sizes)/sizeof(bit_sizes[0]); // @todo I wish I had countof
+    for (i:=0; i<num_bit_sizes; i++) {
+        num_bits := bit_sizes[i];
+        y := pack_pt({t=1.0}, num_bits);
+        pt := unpack_pt(y, num_bits);
+        #assert(ipt96_isequal(pt, {t = 1.0}));
 
-    y = pack_pt({t=-1.0}, num_bits);
-    pt = unpack_pt(y, num_bits);
-    #assert(ipt96_isequal(pt, {t = -1.0}));
+        y = pack_pt({t=-1.0}, num_bits);
+        pt = unpack_pt(y, num_bits);
+        #assert(ipt96_isequal(pt, {t = -1.0}));
 
-    y = pack_pt({p=1.0}, num_bits);
-    pt = unpack_pt(y, num_bits);
-    #assert(ipt96_isequal(pt, {p=1.0}));
+        y = pack_pt({p=1.0}, num_bits);
+        pt = unpack_pt(y, num_bits);
+        #assert(ipt96_isequal(pt, {p=1.0}));
 
-    y = pack_pt({p=-1.0}, num_bits);
-    pt = unpack_pt(y, num_bits);
-    #assert(ipt96_isequal(pt, {p=-1.0}));
-  }
+        y = pack_pt({p=-1.0}, num_bits);
+        pt = unpack_pt(y, num_bits);
+        #assert(ipt96_isequal(pt, {p=-1.0}));
+    }
 }
 
-struct FooTransform
-{
-  num_pixels : usize;
-  inputIPT96 : IPT96*;
-  num_bits : int;
-  packed_hues_buf : uint32*;
-  hue_counts : FooHueCount*;
+struct FooTransform {
+    num_pixels: usize;
+    inputIPT96: IPT96*;
+    num_bits: int;
+    packed_hues_buf: uint32*;
+    hue_counts: FooHueCount*;
 }
 
-struct FooHueCount
-{
-  packed_hue : uint32;
-  n : usize;
-  i_min : float;
-  i_max : float;
+struct FooHueCount {
+    packed_hue: uint32;
+    n: usize;
+    i_min: float;
+    i_max: float;
 }
 
-func foo_hue_counts_key(packed_hue : uint32) : uint64
-{
-  return 0xf | bits(packed_hue, 0, 32)<<4;
+func foo_hue_counts_key(packed_hue: uint32): uint64 {
+    return 0xf | bits(packed_hue, 0, 32)<<4;
 }
 
-func foo_record_hue(hue_index: HueIndex*, dest_buf : FooHueCount**, input_count : FooHueCount)
-{
-  hue_key := foo_hue_counts_key(input_count.packed_hue);
-  count_idx_plus_one := std.aget(hue_index.index, hue_key);
-  count_idx : usize;
-  if (count_idx_plus_one) {
-    count_idx = count_idx_plus_one - 1;
-  } else {
-    count_idx = std.alen(*dest_buf);
-    count_idx_plus_one = count_idx + 1;
-    std.aput(hue_index.index, hue_key, count_idx_plus_one);
-    std.apush(*dest_buf, FooHueCount{
-      packed_hue = input_count.packed_hue,
-      i_min = 1.0,
-      i_max = 0.0
-    });
-  }
-  count : FooHueCount* = &(*dest_buf)[count_idx];
-  #assert(count.packed_hue == input_count.packed_hue);
-  count.i_min = input_count.i_min<count.i_min? input_count.i_min:count.i_min;
-  count.i_max = input_count.i_max>count.i_max? input_count.i_max:count.i_max;
-  count.n += input_count.n;
+func foo_record_hue(hue_index: HueIndex*, dest_buf: FooHueCount**, input_count: FooHueCount) {
+    hue_key := foo_hue_counts_key(input_count.packed_hue);
+    count_idx_plus_one := std.aget(hue_index.index, hue_key);
+    count_idx: usize;
+    if (count_idx_plus_one) {
+        count_idx = count_idx_plus_one - 1;
+    } else {
+        count_idx = std.alen(*dest_buf);
+        count_idx_plus_one = count_idx + 1;
+        std.aput(hue_index.index, hue_key, count_idx_plus_one);
+        std.apush(*dest_buf, FooHueCount{
+        packed_hue = input_count.packed_hue,
+        i_min = 1.0,
+        i_max = 0.0
+        });
+    }
+    count: FooHueCount* = &(*dest_buf)[count_idx];
+    #assert(count.packed_hue == input_count.packed_hue);
+    count.i_min = input_count.i_min<count.i_min? input_count.i_min:count.i_min;
+    count.i_max = input_count.i_max>count.i_max? input_count.i_max:count.i_max;
+    count.n += input_count.n;
 }
 
-func foo_merge_hue_counts(hue_index: HueIndex*, dest_buf: FooHueCount**, src: FooHueCount const*, n: usize)
-{
-  for (src_i:=&src[0]; src_i<&src[n]; src_i++) {
-    foo_record_hue(hue_index, dest_buf, *src_i);
-  }
+func foo_merge_hue_counts(hue_index: HueIndex*, dest_buf: FooHueCount**, src: FooHueCount const*, n: usize) {
+    for (src_i:=&src[0]; src_i<&src[n]; src_i++) {
+        foo_record_hue(hue_index, dest_buf, *src_i);
+    }
 }
 
-func run_foo(foo : FooTransform*)
-{
-  #assert(foo.num_bits > 0 && 2*foo.num_bits <= 30);
-  std.afit(foo.packed_hues_buf, foo.num_pixels);
-  std.afit(foo.hue_counts, 1); // reserve null entry
-  hue_counts_map: HueIndex;
-  for (i:=0; i<foo.num_pixels; i++) {
-    packed_hue := pack_pt(foo.inputIPT96[i], foo.num_bits);
-    foo.packed_hues_buf[i] = packed_hue;
-    intensity := foo.inputIPT96[i].i;
-    foo_record_hue(&hue_counts_map, &foo.hue_counts,
-      {
-        packed_hue=packed_hue,
-        i_min=intensity,
-        i_max=intensity,
-        n=1,
-      });
-  }
-  std.afree(hue_counts_map.index);
+func run_foo(foo: FooTransform*) {
+    #assert(foo.num_bits > 0 && 2*foo.num_bits <= 30);
+    std.afit(foo.packed_hues_buf, foo.num_pixels);
+    std.afit(foo.hue_counts, 1); // reserve null entry
+    hue_counts_map: HueIndex;
+    for (i:=0; i<foo.num_pixels; i++) {
+        packed_hue := pack_pt(foo.inputIPT96[i], foo.num_bits);
+        foo.packed_hues_buf[i] = packed_hue;
+        intensity := foo.inputIPT96[i].i;
+        foo_record_hue(&hue_counts_map, &foo.hue_counts, {
+            packed_hue=packed_hue,
+            i_min=intensity,
+            i_max=intensity,
+            n=1,
+        });
+    }
+    std.afree(hue_counts_map.index);
 }
 
 // @todo window colors to not over represent highs and lows
 
-struct ImageTask
-{
-  image: Image8;
-  task: Task;
-  task_data: ImageTaskData*;
+struct ImageTask {
+    image: Image8;
+    task: Task;
+    task_data: ImageTaskData*;
 }
 
-func image_task_from_file(tasks : ImageTask*, abspath : char*)
-{
-  tasks.image = image_load_from_path(abspath, 3);
-  num_pixels := tasks.image.width*tasks.image.height;
-  ipt96_from_rgb24 := allocate_ipt96_from_rgb24(num_pixels, (:RGB24*)tasks.image.interleaved_channels);
-  tasks.task_data = libc.calloc(1, sizeof(*tasks.task_data));
-  *tasks.task_data = {
-    ipt96_from_rgb24 = ipt96_from_rgb24,
-    count_hue = { num_pixels = num_pixels, inputIPT96 = ipt96_from_rgb24.outputIPT96, },
-  };
-  tasks.task = create_task(image_task, tasks.task_data);
+func image_task_from_file(tasks: ImageTask*, abspath: char*) {
+    tasks.image = image_load_from_path(abspath, 3);
+    num_pixels := tasks.image.width*tasks.image.height;
+    ipt96_from_rgb24 := allocate_ipt96_from_rgb24(num_pixels, (:RGB24*)tasks.image.interleaved_channels);
+    tasks.task_data = libc.calloc(1, sizeof(*tasks.task_data));
+    *tasks.task_data = {
+        ipt96_from_rgb24 = ipt96_from_rgb24,
+        count_hue = { num_pixels = num_pixels, inputIPT96 = ipt96_from_rgb24.outputIPT96, },
+    };
+    tasks.task = create_task(image_task, tasks.task_data);
 }
 
-func image_task_free(task : ImageTask*)
-{
-  image_free(&task.image);
-  free(task.task_data);
-  task.task_data = NULL;
+func image_task_free(task: ImageTask*) {
+    image_free(&task.image);
+    free(task.task_data);
+    task.task_data = NULL;
 }
 
-struct ImageTaskData
-{
-  done : bool;
-  ipt96_from_rgb24 : IPT96FromRGB24Transform;
-  count_hue : CountHueTransform;
-  foo : FooTransform;
+struct ImageTaskData {
+    done: bool;
+    ipt96_from_rgb24: IPT96FromRGB24Transform;
+    count_hue: CountHueTransform;
+    foo: FooTransform;
 }
 
 @type_erased("{opaque_data: ImageTaskData*}")
-func image_task(opaque_data : void*)
-{
-  task : ImageTaskData* = opaque_data;
-  run_ipt96_from_rgb24(&task.ipt96_from_rgb24);
-  run_count_hues(&task.count_hue);
+func image_task(opaque_data: void*) {
+    task: ImageTaskData* = opaque_data;
+    run_ipt96_from_rgb24(&task.ipt96_from_rgb24);
+    run_count_hues(&task.count_hue);
 
-  task.foo.num_pixels = task.ipt96_from_rgb24.num_pixels;
-  task.foo.inputIPT96 = task.ipt96_from_rgb24.outputIPT96;
-  task.foo.num_bits = 10;
-  run_foo(&task.foo);
+    task.foo.num_pixels = task.ipt96_from_rgb24.num_pixels;
+    task.foo.inputIPT96 = task.ipt96_from_rgb24.outputIPT96;
+    task.foo.num_bits = 10;
+    run_foo(&task.foo);
 
-  // @todo should deallocation be inside the task?
-  free_ipt96_from_rgb24(&task.ipt96_from_rgb24);
+    // @todo should deallocation be inside the task?
+    free_ipt96_from_rgb24(&task.ipt96_from_rgb24);
 
-  task.ipt96_from_rgb24.inputRGB24 = NULL;
-  task.done = true;
+    task.ipt96_from_rgb24.inputRGB24 = NULL;
+    task.done = true;
 }
 
-func clamp_float(x : float, min : float, max : float) : float
-{
-  return x < min? min : (x > max? max : x);
+func clamp_float(x: float, min: float, max: float): float {
+    return x < min? min: (x > max? max: x);
 }
 
-func run_ipt96_from_rgb24(transform : IPT96FromRGB24Transform*)
-{
-  num_pixels := transform.num_pixels;
-  buffer1 : float* = libc.calloc(num_pixels*3, sizeof(float));
-  buffer2 : float* = libc.calloc(num_pixels*3, sizeof(float));
-  for (i:=0; i<num_pixels; i++) {
-    buffer1[3*i+0] = float(transform.inputRGB24[i].r)/255.0;
-    buffer1[3*i+1] = float(transform.inputRGB24[i].g)/255.0;
-    buffer1[3*i+2] = float(transform.inputRGB24[i].b)/255.0;
-  }
-  xyz_from_srgb(transform.num_pixels, buffer2, 3, buffer1 , 3);
-  ipt_from_xyz(transform.num_pixels, buffer1, 3, buffer2, 3);
-  for (i:=0; i<num_pixels; i++) {
-    transform.outputIPT96[i].i = buffer1[3*i+0];
-    transform.outputIPT96[i].p = buffer1[3*i+1];
-    transform.outputIPT96[i].t = buffer1[3*i+2];
-  }
-  free(buffer1);
-  free(buffer2);
+func run_ipt96_from_rgb24(transform: IPT96FromRGB24Transform*) {
+    num_pixels := transform.num_pixels;
+    buffer1: float* = libc.calloc(num_pixels*3, sizeof(float));
+    buffer2: float* = libc.calloc(num_pixels*3, sizeof(float));
+    for (i:=0; i<num_pixels; i++) {
+        buffer1[3*i+0] = float(transform.inputRGB24[i].r)/255.0;
+        buffer1[3*i+1] = float(transform.inputRGB24[i].g)/255.0;
+        buffer1[3*i+2] = float(transform.inputRGB24[i].b)/255.0;
+    }
+    xyz_from_srgb(transform.num_pixels, buffer2, 3, buffer1 , 3);
+    ipt_from_xyz(transform.num_pixels, buffer1, 3, buffer2, 3);
+    for (i:=0; i<num_pixels; i++) {
+        transform.outputIPT96[i].i = buffer1[3*i+0];
+        transform.outputIPT96[i].p = buffer1[3*i+1];
+        transform.outputIPT96[i].t = buffer1[3*i+2];
+    }
+    free(buffer1);
+    free(buffer2);
 }
 
 func run_count_hues(transform: CountHueTransform*) {
-  std.afit(transform.result.hues, transform.num_pixels/4);
+    std.afit(transform.result.hues, transform.num_pixels/4);
 
-  hue_index: HueIndex;
-  src := transform.inputIPT96;
-  for (i:=0; i<transform.num_pixels; i++) {
-    ipt : float[3] = { src[i].i, src[i].p, src[i].t };
-    hue_angle := libc.atan2(ipt[1], ipt[2]);
-    // @todo pass as parameter
-    quantized_hue_angle := libc.round(3000.0*hue_angle)/3000.0;
-    record_raw_hue(&hue_index, &transform.result, {
-	    hue_angle = quantized_hue_angle,
-	    num = 1,
-	    ipt = { ipt[0], ipt[1], ipt[2] },
-    });
-  }
-  std.afree(hue_index.index);
+    hue_index: HueIndex;
+    src := transform.inputIPT96;
+    for (i:=0; i<transform.num_pixels; i++) {
+        ipt: float[3] = { src[i].i, src[i].p, src[i].t };
+        hue_angle := libc.atan2(ipt[1], ipt[2]);
+        // @todo pass as parameter
+        quantized_hue_angle := libc.round(3000.0*hue_angle)/3000.0;
+        record_raw_hue(&hue_index, &transform.result, {
+            hue_angle = quantized_hue_angle,
+            num = 1,
+            ipt = { ipt[0], ipt[1], ipt[2] },
+        });
+    }
+    std.afree(hue_index.index);
 }
 
-func test_ipt96_from_rgb24_transform()
-{
-  rgb : RGB24[3] = {
-    { r=0xff },
-    { g=0xff },
-    { b=0xff },
-  };
-  ipt : IPT96[3];
-  transform := IPT96FromRGB24Transform{
-    num_pixels = 3,
-    inputRGB24 = rgb,
-    outputIPT96 = ipt,
-  };
-  run_ipt96_from_rgb24(&transform);
-  for (i:=0; i<3; i++) {
-    fipt : float[3] = {
-      ipt[i].i,
-      ipt[i].p,
-      ipt[i].t,
+func test_ipt96_from_rgb24_transform() {
+    rgb: RGB24[3] = {
+        { r=0xff },
+        { g=0xff },
+        { b=0xff },
     };
-    rrgb : float[3];
-    txyz : float[3];
-    xyz_from_ipt(1, txyz, 3, fipt, 3);
-    srgb_from_xyz(1, rrgb, 3, txyz, 3);
-    frgb : float[3] = {
-      rgb[i].r/255.0,
-      rgb[i].g/255.0,
-      rgb[i].b/255.0,
+    ipt: IPT96[3];
+    transform := IPT96FromRGB24Transform{
+        num_pixels = 3,
+        inputRGB24 = rgb,
+        outputIPT96 = ipt,
     };
-    #assert(almost_equal_3x(frgb, rrgb, 2.0/255.0));
-  }
+    run_ipt96_from_rgb24(&transform);
+    for (i:=0; i<3; i++) {
+        fipt: float[3] = {
+        ipt[i].i,
+        ipt[i].p,
+        ipt[i].t,
+        };
+        rrgb: float[3];
+        txyz: float[3];
+        xyz_from_ipt(1, txyz, 3, fipt, 3);
+        srgb_from_xyz(1, rrgb, 3, txyz, 3);
+        frgb: float[3] = {
+        rgb[i].r/255.0,
+        rgb[i].g/255.0,
+        rgb[i].b/255.0,
+        };
+        #assert(almost_equal_3x(frgb, rrgb, 2.0/255.0));
+    }
 }
 
-func read_bool_atomic(x : bool*) : bool
-{
-  return *x;
+func read_bool_atomic(x: bool*): bool {
+    return *x;
 }
 
-func write_bool_atomic(x : bool*, y : bool) {
-  *x = y;
+func write_bool_atomic(x: bool*, y: bool) {
+    *x = y;
 }
 
 func end_task_task(opaque_data: void*) {

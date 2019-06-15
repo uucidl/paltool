@@ -1,64 +1,61 @@
-func str_match_suffix(str : char const*, suffix : char const*) : bool {
-     n := libc.strlen(str);
-     mn := libc.strlen(suffix);
-     while(n && mn && str[n - 1] == suffix[mn - 1]) {
-	  mn--;
-	  n--;
-     }
-     return mn == 0; 
+func str_match_suffix(str: char const*, suffix: char const*): bool {
+    n := libc.strlen(str);
+    mn := libc.strlen(suffix);
+    while(n && mn && str[n - 1] == suffix[mn - 1]) {
+        mn--;
+        n--;
+    }
+    return mn == 0;
 }
 
-func expect_arg(argi: int, argc: int, argv: char**, error : char*) {
-     if (argi >= argc) {
-          die_at(argi, argc, argv, error);
-     }
+func expect_arg(argi: int, argc: int, argv: char**, error: char*) {
+    if (argi >= argc) {
+        die_at(argi, argc, argv, error);
+    }
 }
 
-func expect_str(argi: int*, argc: int, argv: char**, dest_str : char**, desc : char const*) {
-     if (*argi >= argc) {
-         error := strbuf("expected %s", desc);
-         die_at(*argi, argc, argv, error);
-         std.afree(error);
-     }
-     *dest_str = argv[*argi];
-     *argi = *argi + 1;
+func expect_str(argi: int*, argc: int, argv: char**, dest_str: char**, desc: char const*) {
+    if (*argi >= argc) {
+        error := strbuf("expected %s", desc);
+        die_at(*argi, argc, argv, error);
+        std.afree(error);
+    }
+    *dest_str = argv[*argi];
+    *argi = *argi + 1;
 }
 
 func die_at(argi: int, argc:int, argv: char**, error: char*) {
-     printf("ERROR: %s:\n", error);
-     {
-          printf("ERROR: ");
-          pre := "";
-          for (i:=0; i<argc; i++) {
-               printf("%s%s", pre, argv[i]);
-               pre = " ";
-          }
-          printf("\n");
-     }
-     printf("ERROR: ");
-     pre := "";
-     for (i:=0; i<argi; i++) {
-          printf("%s%*s", pre, (:int)libc.strlen(argv[i]), "");
-          pre = " ";
-     }
-     if (argi < argc)
-     {
-          printf("%s", pre);
-          for (i:=0; i<libc.strlen(argv[argi]); i++) {
-               printf("^");
-          }
-          pre = " ";
-     }
-     else
-     {
-          printf("%s%s", pre, "^");
-     }
-     pre = " ";
-     for (i:=argi+1; i<argc; i++) {
-          printf("%s%*s", pre, (:int)libc.strlen(argv[i]), "");
-          pre = " ";
-     }
-     printf("\n");
-     printf("USAGE: %s\n", USAGE);
-     libc.exit(1);
+    printf("ERROR: %s:\n", error);
+    {
+        printf("ERROR: ");
+        pre := "";
+        for (i:=0; i<argc; i++) {
+            printf("%s%s", pre, argv[i]);
+            pre = " ";
+        }
+        printf("\n");
+    }
+    printf("ERROR: ");
+    pre := "";
+    for (i:=0; i<argi; i++) {
+        printf("%s%*s", pre, (:int)libc.strlen(argv[i]), "");
+        pre = " ";
+    }
+    if (argi < argc) {
+        printf("%s", pre);
+        for (i:=0; i<libc.strlen(argv[argi]); i++) {
+            printf("^");
+        }
+        pre = " ";
+    } else {
+        printf("%s%s", pre, "^");
+    }
+    pre = " ";
+    for (i:=argi+1; i<argc; i++) {
+        printf("%s%*s", pre, (:int)libc.strlen(argv[i]), "");
+        pre = " ";
+    }
+    printf("\n");
+    printf("USAGE: %s\n", USAGE);
+    libc.exit(1);
 }

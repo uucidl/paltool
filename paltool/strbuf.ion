@@ -1,51 +1,49 @@
 import std
 
-func strbuf_push(bufptr : char**, str : char const*) {
-  n := libc.strlen(str);
-  std.afit(*bufptr, n);
-  buf := *bufptr;
-  libc.memcpy(&buf[std.alen(buf)], str, sizeof(char)*n);
-}
-
-func strbuf_terminate(bufptr : char**) {
-  std.apush(*bufptr, '\0');
-}
-
-func strbuf_end(bufptr : char**) : char*
-{
-  return *bufptr + std.alen(*bufptr);
-}
-
-func strbuf_vcatf(bufptr : char**, fmt : char const*, input_args : libc.va_list)
-{
-  args : libc.va_list;
-  libc.va_copy(args, input_args);
-  cap := std.acap(*bufptr) - std.alen(*bufptr);
-  n := 1 + libc.vsnprintf(strbuf_end(bufptr), cap, fmt, args);
-  libc.va_end(args);
-  if (n > cap) {
+func strbuf_push(bufptr: char**, str: char const*) {
+    n := libc.strlen(str);
     std.afit(*bufptr, n);
+    buf := *bufptr;
+    libc.memcpy(&buf[std.alen(buf)], str, sizeof(char)*n);
+}
+
+func strbuf_terminate(bufptr: char**) {
+    std.apush(*bufptr, '\0');
+}
+
+func strbuf_end(bufptr: char**): char* {
+    return *bufptr + std.alen(*bufptr);
+}
+
+func strbuf_vcatf(bufptr: char**, fmt: char const*, input_args: libc.va_list) {
+    args: libc.va_list;
     libc.va_copy(args, input_args);
-    new_cap := std.acap(*bufptr) - std.alen(*bufptr);
-    n = 1 + libc.vsnprintf(strbuf_end(bufptr), new_cap, fmt, args);
-    #assert(n <= new_cap);
+    cap := std.acap(*bufptr) - std.alen(*bufptr);
+    n := 1 + libc.vsnprintf(strbuf_end(bufptr), cap, fmt, args);
     libc.va_end(args);
-  }
-  std.asetlen(*bufptr, std.alen(*bufptr) + n - 1);
+    if (n > cap) {
+        std.afit(*bufptr, n);
+        libc.va_copy(args, input_args);
+        new_cap := std.acap(*bufptr) - std.alen(*bufptr);
+        n = 1 + libc.vsnprintf(strbuf_end(bufptr), new_cap, fmt, args);
+        #assert(n <= new_cap);
+        libc.va_end(args);
+    }
+    std.asetlen(*bufptr, std.alen(*bufptr) + n - 1);
 }
 
-func strbuf_catf(bufptr : char**, fmt : char const*, ...) {
-  args : libc.va_list;
-  libc.va_start(args, fmt);
-  strbuf_vcatf(bufptr, fmt, args);
-  libc.va_end(args);
+func strbuf_catf(bufptr: char**, fmt: char const*, ...) {
+    args: libc.va_list;
+    libc.va_start(args, fmt);
+    strbuf_vcatf(bufptr, fmt, args);
+    libc.va_end(args);
 }
 
-func strbuf(fmt : char const*, ...) : char* {
-  result: char*;
-  args: libc.va_list;
-  libc.va_start(args, fmt);
-  strbuf_vcatf(&result, fmt, args);
-  libc.va_end(args);
-  return result;
+func strbuf(fmt: char const*, ...): char* {
+    result: char*;
+    args: libc.va_list;
+    libc.va_start(args, fmt);
+    strbuf_vcatf(&result, fmt, args);
+    libc.va_end(args);
+    return result;
 }

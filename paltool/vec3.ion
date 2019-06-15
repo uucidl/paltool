@@ -1,32 +1,29 @@
-func max_3x(n : usize, v : float*, v_stride : usize) : float
-{
-  max : float = INT_MIN;
-  for (i:=0; i<n; i++) {
-    max = v[0]>max? v[0]:max;
-    max = v[1]>max? v[1]:max;
-    max = v[2]>max? v[2]:max;
-    v += v_stride;
-  }
-  return max;
+func max_3x(n: usize, v: float*, v_stride: usize): float {
+    max: float = INT_MIN;
+    for (i:=0; i<n; i++) {
+        max = v[0]>max? v[0]:max;
+        max = v[1]>max? v[1]:max;
+        max = v[2]>max? v[2]:max;
+        v += v_stride;
+    }
+    return max;
 }
 
-func scale_3x(n : usize, v : float*, v_stride : usize, s : float)
-{
-  for (i:=0; i<n; i++) {
-    v[0] *= s;
-    v[1] *= s;
-    v[2] *= s;
-    v += v_stride;
-  }
+func scale_3x(n: usize, v: float*, v_stride: usize, s: float) {
+    for (i:=0; i<n; i++) {
+        v[0] *= s;
+        v[1] *= s;
+        v[2] *= s;
+        v += v_stride;
+    }
 }
 
-func normalize_or_zero_3x(n : usize, v : float*, v_stride : usize)
-{
-  for (i:=0;i<n;i++) {
-    sqnorm := v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
-    s := sqnorm <= 0.0? 0.0 : 1.0/libc.sqrt(sqnorm);
-    scale_3x(1, v, 3, s);
-    v += v_stride;
-  }
+func normalize_or_zero_3x(n: usize, v: float*, v_stride: usize) {
+    for (i:=0;i<n;i++) {
+        sqnorm := v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+        s := sqnorm <= 0.0? 0.0: 1.0/libc.sqrt(sqnorm);
+        scale_3x(1, v, 3, s);
+        v += v_stride;
+    }
 }
 
