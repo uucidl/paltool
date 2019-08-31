@@ -95,7 +95,7 @@ func xyz_from_srgb(n: usize, xyz: float*, xyz_stride: usize, srgb: float const*,
 
 // the IPT colorspace is designed to achieve perceptual constant hue
 // Development and Testing of a Color Space (IPT) with Improved Hue Uniformity
-// Fritz Ebner and Mark D. Fairchild 
+// Fritz Ebner and Mark D. Fairchild
 
 func ipt_from_xyz(n: usize, ipt: float*, ipt_stride: usize, xyz: float const*, xyz_stride: usize) {
     lms_from_xyz: float[9] = {
@@ -162,6 +162,16 @@ func srgb_from_ipt(n: usize, srgb: float*, srgb_stride: usize, ipt: float const*
         srgb_from_xyz(1, srgb, 3, xyz, 3);
         ipt += ipt_stride;
         srgb += srgb_stride;
+    }
+}
+
+func ipt_from_srgb(n: usize, ipt: float*, ipt_stride: usize, srgb: float const*, srgb_stride: usize) {
+    for (i:=0; i<n; i++) {
+        xyz: float[3];
+        xyz_from_srgb(1, xyz, 3, srgb, 3);
+        ipt_from_xyz(1, ipt, 3, xyz, 3);
+        srgb += srgb_stride;
+        ipt += ipt_stride;
     }
 }
 

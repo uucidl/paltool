@@ -1,6 +1,5 @@
 // An image with 8bit channels
-struct Image8
-{
+struct Image8 {
   num_channels: int;
   interleaved_channels: uint8*;
   width: int;
@@ -16,6 +15,10 @@ func stbi_load(
 @foreign("stbi_image_free")
 func stbi_image_free(data: uint8*);
 
+@foreign
+func stbi_write_png(filename: char const*, w: int, h: int, comp: int, data: void const*, stride_in_bytes: int): int;
+
+
 func image_load_from_path(path: char const*, num_channels: int): Image8 {
   result: Image8;
   result.interleaved_channels =
@@ -29,5 +32,10 @@ func image_free(image: Image8*) {
   image = {};
 }
 
+func image_save_png(image: Image8, path: char const*) {
+    stbi_write_png(path, image.width, image.height, image.num_channels, image.interleaved_channels, image.width * image.num_channels);
+}
+
 #foreign(header="stb_image.h")
+#foreign(header="stb_image_write.h")
 #foreign(source="codecs.c")

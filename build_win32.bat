@@ -24,3 +24,9 @@ cl "%ObjDir%\out_paltool.c" -Fe:"%O%" -Fo:"%ObjDir%"\ %CLFlags% -nologo ^
  || exit /b 1
 echo PROGRAM	%O%
 
+ion -o "%ObjDir%\out_blacktool.c" blacktool || exit /b 1
+set O="%OutputDir%\blacktool.exe"
+cl "%ObjDir%\out_blacktool.c" -Fe:"%O%" -Fo:"%ObjDir%"\ %CLFlags% -nologo ^
+ -link "%LinkFlags%" ^
+ || exit /b 1
+echo PROGRAM    %O%
